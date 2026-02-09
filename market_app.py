@@ -8512,7 +8512,7 @@ class MarketProbabilityIndex:
         """
         # TUTAJ WKLEISZ LINK DO SWOJEGO PLIKU NA GITHUBIE (Wersja RAW)
         # Na razie zostaw to puste lub wpisz ten przykład, wyjaśnię niżej jak go zdobyć:
-        UPDATE_URL = "https://raw.githubusercontent.com/TWOJA_NAZWA/TWOJE_REPO/main/market_app.py"
+        UPDATE_URL = "https://raw.githubusercontent.com/SonAi-ai/lambo-app/refs/heads/main/market_app.py"
         
         try:
             # 1. Pobieramy kod z internetu (tylko tekst)
