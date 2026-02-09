@@ -1,0 +1,10 @@
+streamlit
+yfinance
+pandas
+matplotlib
+seaborn
+requests
+feedparser
+pandas_datareader
+numpy
+textblob
