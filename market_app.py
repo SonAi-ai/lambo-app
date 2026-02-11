@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from math import pi
 
 # --- KONFIGURACJA WERSJI ---
-APP_VERSION = "1.1"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
+APP_VERSION = "1.2"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
 # ---------------------------
 
 # --- OBSŁUGA PROPHET ---
@@ -8635,55 +8635,62 @@ class MarketProbabilityIndex:
         except Exception as e:
             print(f"⚠️ Błąd analityki: {e}")
 
-    # --- SYSTEM AKTUALIZACJI (AUTO-UPDATER) ---
+    # --- SYSTEM AKTUALIZACJI (DEBUG MODE) ---
     def check_for_updates(self):
         """
-        Sprawdza, czy na GitHubie jest nowsza wersja kodu.
-        Jeśli tak, pozwala użytkownikowi zaktualizować aplikację jednym kliknięciem.
+        Sprawdza dostępność nowej wersji na GitHub.
         """
-        # TUTAJ WKLEISZ LINK DO SWOJEGO PLIKU NA GITHUBIE (Wersja RAW)
-        # Na razie zostaw to puste lub wpisz ten przykład, wyjaśnię niżej jak go zdobyć:
-        UPDATE_URL = "https://raw.githubusercontent.com/SonAi-ai/lambo-app/refs/heads/main/market_app.py"
-        
+        # -----------------------------------------------------------
+        # KROK 1: TUTAJ WKLEJ SWÓJ LINK "RAW" Z GITHUBA!
+        # Instrukcja: Wejdź na GitHub -> Otwórz plik .py -> Kliknij przycisk "Raw" -> Skopiuj link z paska adresu
+        # Przykład: https://raw.githubusercontent.com/TwojNick/TwojeRepo/main/twoj_plik.py
+        # -----------------------------------------------------------
+        UPDATE_URL = "https://raw.githubusercontent.com/SonAi-ai/lambo-app/refs/heads/main/market_app.py" 
+        # -----------------------------------------------------------
+
+        # Jeśli link jest pusty lub domyślny, przerywamy
+        if "WKLEJ_TUTAJ" in UPDATE_URL or not UPDATE_URL:
+            # st.warning("⚠️ Deweloper nie ustawił linku aktualizacji (UPDATE_URL).")
+            return
+
         try:
-            # 1. Pobieramy kod z internetu (tylko tekst)
-            response = requests.get(UPDATE_URL, timeout=3)
+            # Pobieramy kod
+            response = requests.get(UPDATE_URL, timeout=5)
             
             if response.status_code == 200:
                 new_code = response.text
                 
-                # 2. Szukamy wersji w nowym kodzie za pomocą "Regex"
-                # Szuka linijki: APP_VERSION = "x.x"
+                # Szukamy wersji w pobranym kodzie
                 match = re.search(r'APP_VERSION\s*=\s*"([0-9\.]+)"', new_code)
                 
                 if match:
                     remote_version = match.group(1)
                     
-                    # 3. Porównujemy wersje (Lokalna vs Internetowa)
-                    # Jeśli wersja w necie jest inna (większa) niż nasza
+                    # Logika porównania (Dla Ciebie do testów)
+                    # print(f"Lokalna: {APP_VERSION} | Zdalna: {remote_version}") 
+                    
+                    # Jeśli wersje są różne -> Pokaż powiadomienie
                     if remote_version != APP_VERSION:
-                        st.warning(f"🚀 **DOSTĘPNA NOWA WERSJA!** (Twoja: {APP_VERSION} -> Nowa: {remote_version})")
-                        st.info("Nowości: Ulepszenia algorytmu i poprawki błędów.")
+                        st.toast(f"🚀 Nowa wersja wykryta: {remote_version}!", icon="🎉")
                         
-                        # 4. Przycisk aktualizacji
-                        if st.button("📥 POBIERZ I ZAKTUALIZUJ TERAZ"):
-                            with st.spinner("Pobieranie aktualizacji... Nie wyłączaj programu!"):
-                                # Nadpisujemy bieżący plik nowym kodem
+                        st.warning(f"🚀 **DOSTĘPNA AKTUALIZACJA!** (Masz: {APP_VERSION} ➡️ Jest: {remote_version})")
+                        
+                        if st.button("📥 POBIERZ I ZAKTUALIZUJ (v" + remote_version + ")"):
+                            with st.spinner("Pobieranie nowej wersji..."):
+                                # Nadpisujemy plik
                                 with open(__file__, "w", encoding="utf-8") as f:
                                     f.write(new_code)
                                 
-                                st.success("✅ Aktualizacja zakończona! Aplikacja zaraz się zrestartuje.")
-                                import time
+                                st.success("✅ Gotowe! Restartuję...")
                                 time.sleep(2)
-                                st.rerun() # Restartuje aplikację
+                                st.rerun()
                 else:
-                    # Nie znaleziono wersji w kodzie online (błąd pliku)
-                    pass
-                    
+                    print("Błąd: Nie znalazłem APP_VERSION w pliku na GitHubie.")
+            else:
+                print(f"Błąd połączenia z GitHub: Kod {response.status_code}")
+                
         except Exception as e:
-            # Jeśli nie ma internetu lub link jest zły, po prostu milczymy (żeby nie wkurzać usera)
-            # print(f"Błąd sprawdzania aktualizacji: {e}") 
-            pass
+            print(f"Błąd aktualizacji: {e}")
 
     # --- METODA 1: OBLICZENIA (GET) ---
     def get_altcoin_indicator_data(self):
@@ -10152,6 +10159,95 @@ class MarketProbabilityIndex:
         
         return fig
 
+    # --- NOWOŚĆ: FSD RACE (Autonomiczne Auta & EV) ---
+    def get_fsd_race_data(self):
+        """
+        Analizuje wyścig o Autonomię (FSD) i rynek EV.
+        Porównuje Teslę (Lider AI) z Chinami (BYD), Siecią (Uber) i Start-upami (Rivian).
+        """
+        try:
+            # 2 lata (od pęknięcia bańki EV w 2022, żeby widzieć kto przetrwał)
+            start_date = (datetime.now() - timedelta(days=365*2)).strftime('%Y-%m-%d')
+            
+            tickers = {
+                'TSLA': 'Tesla (FSD Leader)',
+                'UBER': 'Uber (Sieć Robotaxi)',
+                'BYDDY': 'BYD (Chiński Smok)',
+                'RIVN': 'Rivian (Walka o życie)',
+                'IDRV': 'ETF Autonomii (Benchmark)'
+            }
+            
+            data = yf.download(list(tickers.keys()), start=start_date, progress=False)
+            
+            # Fix MultiIndex
+            if isinstance(data.columns, pd.MultiIndex):
+                try: df = data.xs('Close', axis=1, level=0, drop_level=True)
+                except: 
+                    try: df = data.xs('Close', axis=1, level=1, drop_level=True)
+                    except: return None
+            else:
+                df = data['Close']
+
+            df = df.ffill().dropna()
+            if df.empty: return None
+
+            # Normalizacja (Start = 0%)
+            df_norm = (df / df.iloc[0] - 1) * 100
+            
+            # Zmieniamy nazwy
+            df_norm.rename(columns=tickers, inplace=True)
+            
+            return df_norm
+
+        except Exception as e:
+            print(f"Błąd FSD Race: {e}")
+            return None
+
+    def plot_fsd_race(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 8))
+        ax1 = fig.add_subplot(111)
+        
+        # Kolory
+        colors = {
+            'Tesla (FSD Leader)': '#ff0000',    # Tesla Red
+            'Uber (Sieć Robotaxi)': '#000000',  # Uber Black (lub biały w dark mode)
+            'BYD (Chiński Smok)': '#00e5ff',    # China Tech Cyan
+            'Rivian (Walka o życie)': '#ff9900', # Orange
+            'ETF Autonomii (Benchmark)': '#555555' # Grey
+        }
+
+        for col in df.columns:
+            # Uber w Dark Mode musi być jasny
+            c = colors.get(col, 'white')
+            if 'Uber' in col and t['bg'] == '#0e1117': c = '#ffffff' # Biały Uber w nocy
+            
+            # Tesla najgrubsza
+            lw = 3 if 'Tesla' in col else 2.5 if 'Uber' in col else 1.5
+            alpha = 1.0 if 'Tesla' in col or 'Uber' in col else 0.7
+            
+            final_val = df[col].iloc[-1]
+            
+            ax1.plot(df.index, df[col], color=c, linewidth=lw, alpha=alpha, label=f"{col}: {final_val:+.0f}%")
+            ax1.scatter(df.index[-1], final_val, color=c, s=50, zorder=5)
+
+        ax1.axhline(0, color=t['text'], linestyle=':', linewidth=1)
+        
+        ax1.set_title("FSD RACE: Tesla vs Reszta Świata (2 Lata)", fontsize=16, color=t['text'], fontweight='bold')
+        ax1.set_ylabel('Zwrot z inwestycji (%)', color=t['text'])
+        
+        ax1.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax1.set_facecolor(t['bg'])
+        ax1.grid(True, alpha=0.1, color=t['grid'])
+        ax1.spines['top'].set_visible(False); ax1.spines['right'].set_visible(False)
+        ax1.spines['bottom'].set_color(t['text']); ax1.spines['left'].set_color(t['text'])
+        ax1.tick_params(colors=t['text'])
+        
+        return fig
+
 def show_ad_splash():
     if 'ad_shown' not in st.session_state: st.session_state['ad_shown'] = False
     if not st.session_state['ad_shown']:
@@ -10688,6 +10784,7 @@ def main():
                 if st.button("🏛 Insiderzy (Congress)"): st.session_state['active_lazy_chart'] = 'congress_tracker'
                 if st.button("🛡 Przemysł Zbrojeniowy"): st.session_state['active_lazy_chart'] = 'war_machine'
                 if st.button("🦾 Robotyka (Next AI)"): st.session_state['active_lazy_chart'] = 'robo_revolution'
+                if st.button("🚖 Autonomia (FSD/EV)"): st.session_state['active_lazy_chart'] = 'fsd_race'
                 if st.button("🧬 Życie (Bio) & Woda"): st.session_state['active_lazy_chart'] = 'life_death'
 
                 st.caption("💎 **WYCENA FUNDAMENTALNA**")
@@ -11636,6 +11733,24 @@ def main():
                         """)
                     else:
                         st.error("Błąd pobierania danych Bio/Woda.")
+            elif st.session_state.get('active_lazy_chart') == 'fsd_race':
+                
+                with st.spinner("Ładuję algorytmy jazdy autonomicznej..."):
+                    fsd_df = app.get_fsd_race_data()
+                    
+                    if fsd_df is not None:
+                        st.pyplot(app.plot_fsd_race(fsd_df))
+                        
+                        st.caption("""
+                        ℹ️ **FSD RACE (Wyścig Robotaxi).**
+                        To nie jest walka o to, kto sprzeda więcej aut. To walka o to, czyj soft będzie prowadził.
+                        \n🔴 **Tesla (TSLA):** Jeśli FSD zadziała globalnie, Tesla stanie się firmą SaaS (Software as a Service) z marżą 80%.
+                        \n⚪ **Uber:** Posiada sieć klientów. Tesla może chcieć z nimi współpracować (CyberCab w apce Ubera?).
+                        \n🔵 **BYD:** Zalewa świat tanim sprzętem, ale czy mają AI?
+                        \n🟠 **Rivian:** Przestroga. Robienie aut jest trudne i kapitałochłonne. Bez AI są tylko fabryką.
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych EV/FSD.")
         # Pobieranie CSV
         if os.path.isfile("market_log.csv"):
             with open("market_log.csv", "rb") as f: st.download_button("📥 Pobierz CSV", f, "lambo.csv")
