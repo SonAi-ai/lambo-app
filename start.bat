@@ -1,25 +1,18 @@
 @echo off
-TITLE Lambo czy Karton - Launcher
+TITLE Lambo Start System
 echo ========================================================
-echo      🚀 STARTUJE SYSTEM LAMBO CZY KARTON...
-echo      Czekaj, sprawdzam czy masz wszystkie czesci...
+echo      Wykryto Launcher 'py'. Naprawianie srodowiska...
 echo ========================================================
 echo.
 
-:: 1. Najpierw instalujemy biblioteki (jesli ich nie ma)
-echo 🔧 Sprawdzanie bibliotek (moze chwile potrwac)...
-pip install -r requirements.txt
+:: 1. INSTALACJA BRAKUJACYCH ELEMENTOW (Kluczowy krok, ktorego zabraklo)
+echo 🔧 Instaluje biblioteki (requests, streamlit, itp.)...
+py -m pip install -r requirements.txt
 
-:: 2. Jesli instalacja sie uda (lub juz sa), odpalamy program
+:: 2. URUCHOMIENIE PROGRAMU
 echo.
-echo 📈 Uruchamianie Aplikacji...
-echo.
-streamlit run market_app.py
+echo 🚀 Wszystko gotowe. Odpalam Lambo...
+py -m streamlit run market_app.py
 
-:: 3. Pauza na koniec, zeby okno nie zniknelo w razie bledu
-echo.
-echo ========================================================
-echo      JESLI WIDZISZ BLAD POWYZEJ:
-echo      Zrob zdjecie i wyslij do Pawla.
-echo ========================================================
+:: 3. W razie bledow nie zamykaj okna
 pause
