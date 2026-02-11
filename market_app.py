@@ -8186,42 +8186,118 @@ class MarketProbabilityIndex:
             st.sidebar.markdown(html_text, unsafe_allow_html=True)
             st.sidebar.caption(data['desc'])
 
-    # --- SYSTEM: STYLE FIX (DARK SIDEBAR) ---
     def apply_custom_style(self):
         """
-        Wymusza głęboką czerń na pasku bocznym (Sidebar),
-        żeby nie był 'siwy' i pasował do reszty trybu nocnego.
+        STYLE V5 (SLIM BUTTONS): 
+        1. Sidebar -> Tło Ciemne.
+        2. Teksty -> Śnieżnobiałe.
+        3. Inputy -> Białe tło, Czarny tekst.
+        4. Scrollbar -> Biały po najechaniu.
+        5. GUZIKI -> Cieńsza czcionka (font-weight: 400).
         """
         st.markdown("""
             <style>
-                /* 1. Tło Paska Bocznego (Zmieniamy z siwego na ciemny #0E1117) */
+                /* --- 1. GŁÓWNY KONTENER SIDEBARA --- */
                 [data-testid="stSidebar"] {
                     background-color: #0E1117;
-                    border-right: 1px solid #262730; /* Subtelna linia oddzielająca */
+                    border-right: 1px solid #262730;
                 }
 
-                /* 2. Kolor tekstów w Pasku Bocznym (Wymuszamy biały/jasny) */
-                [data-testid="stSidebar"] .stMarkdown, 
-                [data-testid="stSidebar"] p, 
-                [data-testid="stSidebar"] span, 
-                [data-testid="stSidebar"] label {
-                    color: #e0e0e0 !important;
-                }
-                
-                /* 3. Nagłówki w Pasku Bocznym */
+                /* --- 2. TEKSTY W SIDEBARZE (BIAŁE) --- */
                 [data-testid="stSidebar"] h1, 
                 [data-testid="stSidebar"] h2, 
-                [data-testid="stSidebar"] h3 {
+                [data-testid="stSidebar"] h3, 
+                [data-testid="stSidebar"] p, 
+                [data-testid="stSidebar"] span, 
+                [data-testid="stSidebar"] label,
+                [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] p {
                     color: #ffffff !important;
                 }
-                
-                /* 4. Metryki (Liczby) w Pasku Bocznym */
+
+                [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
+                    color: #ffffff !important;
+                    font-weight: bold !important;
+                }
                 [data-testid="stSidebar"] [data-testid="stMetricValue"] {
                     color: #ffffff !important;
                 }
-                [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
-                    color: #aaaaaa !important;
+                [data-testid="stSidebar"] .streamlit-expanderHeader p {
+                    color: #ffffff !important;
+                    font-weight: bold !important;
                 }
+
+                /* --- 3. INPUTY (SUWAKI) - BIAŁE TŁO, CZARNY TEKST --- */
+                div[data-testid="stNumberInput"] label p {
+                    color: #ffffff !important;
+                    font-size: 16px !important;
+                    font-weight: 900 !important;
+                }
+                div[data-testid="stNumberInput"] input {
+                    background-color: #ffffff !important;
+                    color: #000000 !important;
+                    border: 2px solid #00ff55 !important;
+                    font-weight: bold !important;
+                }
+                div[data-testid="stNumberInput"] button {
+                    background-color: #e0e0e0 !important;
+                    color: #000000 !important;
+                    border: 1px solid #cccccc !important;
+                }
+                div[data-testid="stNumberInput"] button svg {
+                    fill: #000000 !important;
+                }
+                div[data-testid="stNumberInput"] button:hover {
+                    background-color: #00ff55 !important;
+                    border-color: #00ff55 !important;
+                }
+
+                /* --- 4. POZIOME LINIE --- */
+                [data-testid="stSidebar"] hr {
+                    border-color: #555555 !important;
+                }
+
+                /* --- 5. SCROLLBAR --- */
+                [data-testid="stSidebar"] ::-webkit-scrollbar {
+                    width: 10px !important;
+                    height: 10px !important;
+                }
+                [data-testid="stSidebar"] ::-webkit-scrollbar-track {
+                    background: #0E1117 !important;
+                }
+                [data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
+                    background: #555555 !important;
+                    border-radius: 5px !important;
+                }
+                [data-testid="stSidebar"] ::-webkit-scrollbar-thumb:hover {
+                    background: #ffffff !important;
+                    border: 1px solid #00ff55 !important;
+                }
+
+                /* --- 6. ODCHUDZANIE GUZIKÓW (BUTTONS) --- */
+                
+                /* Styl ogólny guzika */
+                div.stButton > button {
+                    background-color: #1e1e1e !important;
+                    color: white !important;
+                    border: 1px solid #444 !important;
+                }
+                
+                /* To tutaj zmieniamy grubość czcionki wewnątrz guzika */
+                div.stButton > button p {
+                    font-weight: 400 !important; /* <--- ZMIANA: 400 to 'normal', 700 to 'bold' */
+                    font-size: 14px !important;  /* Opcjonalnie: lekko mniejsza czcionka */
+                }
+
+                /* Efekt najechania (Hover) */
+                div.stButton > button:hover {
+                    border-color: #00ff55 !important;
+                    color: #00ff55 !important;
+                }
+                /* Tekst po najechaniu też ma być cienki, ale zielony */
+                div.stButton > button:hover p {
+                    color: #00ff55 !important;
+                }
+
             </style>
         """, unsafe_allow_html=True)
 
@@ -8408,20 +8484,22 @@ class MarketProbabilityIndex:
 
     def display_bottom_ticker(self):
         """
-        Wyświetla pasek z reklamami na dole ekranu.
+        Wyświetla pasek z reklamami na dole ekranu (wysokość 60px).
+        Dodano klauzulę prawną (Not Financial Advice) dla bezpieczeństwa.
         """
-        # Teksty reklamowe (wymieszane wiadomości systemowe i sprzedażowe)
+        # Teksty reklamowe zmiksowane z zastrzeżeniem prawnym
         ad_text = (
-            "🚀 <b>SONAI PREMIUM:</b> Odblokuj Sygnały Wielorybów!  |  "
+            "🚀 <b>SONAI PREMIUM:</b> Odblokuj Zdrowie psychiczne z SonAi!  |  "
+            "<span style='color: #ff0055;'>⚠️ <b>NOT FINANCIAL ADVICE:</b> Wszystkie dane mają charakter wyłącznie edukacyjny. </span>  |  "
             "💎 <b>ZASADA #1:</b> Nie tracimy pieniędzy.  |  "
-            "🧠 <b>HEAL-TO-EARN:</b> Zarabiaj krypto dbając o zdrowie (Już wkrótce!)  |  "
+            "🧠 <b>HEAL-TO-EARN:</b> SonAi-Zarabiaj krypto dbając o zdrowie (Już wkrótce!)  |  "
+            "<span style='color: #ff0055;'>⚠️ <b>RYZYKO:</b> Inwestujesz na własną odpowiedzialność. </span>  |  "
             "📊 <b>NOWOŚĆ:</b> Sprawdź zakładkę 'Sezonowość' i zobacz idealny rok BTC.  |  "
             "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów - kontakt: ads@sonai.com  |  "
-            "⚠️ <b>OSTRZEŻENIE:</b> Inwestowanie wiąże się z ryzykiem. Używasz narzędzia na własną odpowiedzialność.  |  "
             "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji (zobacz Skaner Bólu). "
         )
 
-        # Styl CSS i HTML paska
+        # Styl CSS i HTML paska (wysokość 60px)
         ticker_html = f"""
         <style>
             .ticker-container {{
@@ -8429,20 +8507,30 @@ class MarketProbabilityIndex:
                 bottom: 0;
                 left: 0;
                 width: 100%;
-                height: 40px; /* ok. 1.5 - 2 cm */
-                background-color: #0e1117; /* Ciemne tło zgodne ze Streamlit */
-                color: #00ff41; /* Neonowa zieleń (Matrix/Terminal) */
-                z-index: 999999; /* Zawsze na wierzchu */
+                height: 60px;
+                background-color: #0e1117; 
+                color: #00ff41; 
+                z-index: 999999; 
                 border-top: 2px solid #00ff41;
                 display: flex;
                 align-items: center;
                 font-family: 'Courier New', monospace;
-                font-size: 16px;
+                font-size: 18px;
                 box-shadow: 0px -5px 15px rgba(0, 255, 65, 0.2);
             }}
             
-            /* Ukrywamy standardową stopkę Streamlit, żeby nie zasłaniała */
+            marquee {{
+                width: 100%;
+                line-height: 60px;
+            }}
+
+            /* Ukrywamy standardową stopkę Streamlit */
             footer {{visibility: hidden;}}
+            
+            /* Margines dla głównej zawartości */
+            .main .block-container {{
+                padding-bottom: 100px !important;
+            }}
         </style>
 
         <div class="ticker-container">
@@ -8452,40 +8540,76 @@ class MarketProbabilityIndex:
         </div>
         """
         
+        # Wyświetlamy ticker na dole
         st.markdown(ticker_html, unsafe_allow_html=True)
+        
+        # Automatyczne dodanie pełnego Expandera do Sidebaru (żebyś nie musiał pamiętać o wywołaniu)
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("⚖️ DISCLAIMER (NOTA PRAWNA)", expanded=False):
+            st.markdown(f"""
+            <div style='font-size: 0.85em; text-align: justify; color: #aaa; line-height: 1.4;'>
+                <b>Lambo czy Karton (v{APP_VERSION})</b> to oprogramowanie analityczne. 
+                <br><br>
+                1. <b>Brak Porady:</b> Żadna informacja tutaj zawarta nie jest "rekomendacją inwestycyjną".
+                <br><br>
+                2. <b>Ryzyko:</b> Rynek finansowy jest nieprzewidywalny. Możesz stracić wszystkie zainwestowane środki.
+                <br><br>
+                3. <b>Odpowiedzialność:</b> Autor nie ponosi odpowiedzialności za Twoje zyski ani straty.
+            </div>
+            """, unsafe_allow_html=True)
 
-    # --- GOOGLE ANALYTICS (BACKEND - NIE DO ZABLOKOWANIA) ---
+    # --- GOOGLE ANALYTICS (FIX: TRWAŁE ID UŻYTKOWNIKA) ---
     def setup_analytics(self):
         """
-        Wysyła dane do GA4 bezpośrednio z Pythona (omija blokady przeglądarki).
+        Wysyła dane do GA4.
+        NAPRAWA: Używa trwałego pliku 'user_id.json', aby rozpoznać tego samego użytkownika
+        nawet po restarcie programu.
         """
-        # Sprawdzamy, czy już wysłaliśmy sygnał w tej sesji (żeby nie dublować)
+        # Sprawdzamy, czy już wysłaliśmy sygnał w tej sesji (żeby nie dublować przy klikaniu)
         if 'analytics_sent' in st.session_state:
             return
 
         GA_ID = "G-D4BM5ZM6NB"
-        
-        # Generujemy unikalne ID dla tej sesji
-        if 'client_id' not in st.session_state:
-            st.session_state['client_id'] = str(uuid.uuid4())
-        
-        cid = st.session_state['client_id']
+        id_filename = "user_id.json"
+        cid = None
 
-        # Parametry, które udają prawdziwą przeglądarkę
+        # --- 1. LOGIKA TRWAŁEGO ID ---
+        try:
+            # Sprawdzamy czy plik z ID już istnieje
+            if os.path.exists(id_filename):
+                with open(id_filename, 'r') as f:
+                    data = json.load(f)
+                    cid = data.get('client_id')
+            
+            # Jeśli pliku nie ma lub jest uszkodzony, generujemy nowy ID
+            if not cid:
+                cid = str(uuid.uuid4())
+                with open(id_filename, 'w') as f:
+                    json.dump({'client_id': cid}, f)
+                    
+        except Exception as e:
+            # Fallback w razie błędu zapisu (np. brak uprawnień)
+            print(f"⚠️ Błąd pliku ID: {e}")
+            cid = str(uuid.uuid4())
+
+        # Zapisujemy ID w sesji na wszelki wypadek
+        st.session_state['client_id'] = cid
+
+        # --- 2. WYSYŁANIE DANYCH ---
+        # Parametry
         payload = {
             'v': '2',                   # Wersja protokołu GA4
             'tid': GA_ID,               # Twój ID
-            'cid': cid,                 # ID Użytkownika
+            'cid': cid,                 # TRWAŁE ID UŻYTKOWNIKA
             'en': 'page_view',          # Zdarzenie: Wyświetlenie strony
-            'dl': 'https://lambo-app.com/home', # <--- WAŻNE: Udajemy, że to nie localhost!
+            'dl': 'https://lambo-app.com/home', # Udajemy URL
             'dt': 'Lambo czy Karton',   # Tytuł strony
-            'seg': '1',                 # Oznacza aktywną sesję
+            'seg': '1',                 # Aktywna sesja
             '_p': cid                   # Debugging ID
         }
 
         # Wysyłamy dane po cichu w tle
         try:
-            # User Agent udający przeglądarkę (żeby Google nie odrzuciło bota)
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
@@ -8496,7 +8620,7 @@ class MarketProbabilityIndex:
                 headers=headers, 
                 timeout=2
             )
-            print(f"✅ SUKCES: Wysłano dane do GA4 z poziomu Pythona! (CID: {cid})")
+            # print(f"✅ Analytics sent. User ID: {cid}")
             
             # Oznaczamy sukces w sesji
             st.session_state['analytics_sent'] = True
@@ -8554,6 +8678,1082 @@ class MarketProbabilityIndex:
             # print(f"Błąd sprawdzania aktualizacji: {e}") 
             pass
 
+    # --- METODA 1: OBLICZENIA (GET) ---
+    def get_altcoin_indicator_data(self):
+        # Pobieramy dane ETH
+        df = yf.download("ETH-USD", start="2019-01-01", progress=False)
+        
+        if df.empty:
+            st.error("Nie udało się pobrać danych ETH.")
+            return None, None
+
+        # Fix dla yfinance
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        # Liczymy średnie
+        df['SMA100'] = df['Close'].rolling(window=100).mean()
+        df['EMA100'] = df['Close'].ewm(span=100, adjust=False).mean()
+        
+        # Logika: SMA100 przecina EMA100 w dół
+        df['Prev_SMA'] = df['SMA100'].shift(1)
+        df['Prev_EMA'] = df['EMA100'].shift(1)
+        df['Bearish_Cross'] = ((df['Prev_SMA'] >= df['Prev_EMA']) & (df['SMA100'] < df['EMA100']))
+        
+        signals = df[df['Bearish_Cross']]
+        return df, signals
+
+    # --- METODA 2: RYSOWANIE (PLOT) ---
+    def plot_altcoin_indicator(self, df, signals):
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # Kolory
+        ax.set_facecolor('#0e1117')
+        fig.patch.set_facecolor('#0e1117')
+
+        # Linie
+        ax.plot(df.index, df['Close'], color='white', alpha=0.3, linewidth=1, label='Cena ETH')
+        ax.plot(df.index, df['SMA100'], color='#00d4ff', linewidth=1.5, label='SMA 100')
+        ax.plot(df.index, df['EMA100'], color='#ff9900', linewidth=1.5, label='EMA 100')
+
+        # Sygnały
+        for date, row in signals.iterrows():
+            ax.axvline(x=date, color='#ff0055', linestyle='--', alpha=0.5)
+            ax.scatter(date, row['SMA100'], color='#ff0055', s=100, zorder=5, marker='v')
+
+        ax.set_title("Altcoin Cycle Indicator (SMA100 < EMA100)", color='white')
+        ax.set_yscale('log')
+        ax.legend(facecolor='#0e1117', labelcolor='white')
+        ax.grid(True, alpha=0.2)
+        ax.tick_params(colors='white')
+        
+        return fig
+
+    def display_legal_disclaimer(self):
+        """
+        Wyświetla profesjonalne zastrzeżenie prawne (Disclaimer) w sidebarze.
+        Chroni autora przed odpowiedzialnością za decyzje inwestycyjne użytkowników.
+        """
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("⚖️ NOTA PRAWNA (DISCLAIMER)", expanded=False):
+            st.markdown(f"""
+            <div style='font-size: 0.8em; text-align: justify; color: #aaa;'>
+                <b>Lambo czy Karton (v{APP_VERSION})</b> jest narzędziem wyłącznie edukacyjnym i informacyjnym. 
+                <br><br>
+                1. <b>To nie jest porada:</b> Żadne dane, analizy ani predykcje AI (Nostradamus, Oracle, itp.) 
+                nie stanowią rekomendacji inwestycyjnej w rozumieniu przepisów prawa.
+                <br><br>
+                2. <b>Ryzyko:</b> Inwestowanie w kryptowaluty i akcje wiąże się z wysokim ryzykiem utraty kapitału. 
+                Wyniki historyczne nie gwarantują przyszłych zysków.
+                <br><br>
+                3. <b>Brak odpowiedzialności:</b> Autor oprogramowania nie ponosi odpowiedzialności za jakiekolwiek 
+                straty finansowe powstałe w wyniku korzystania z niniejszej aplikacji.
+                <br><br>
+                4. <b>Dane:</b> Dane pochodzą z zewnętrznych źródeł (Yahoo Finance, FRED). Nie gwarantujemy 
+                ich 100% dokładności ani ciągłości przesyłu.
+                <br><br>
+                <i>Decyzje podejmujesz wyłącznie na własne ryzyko. Zawsze konsultuj się z licencjonowanym doradcą finansowym.</i>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # --- NOWOŚĆ: INSIDER TRADING TRACKER (Congress Copy-Trade) ---
+    def get_congress_tracker_data(self):
+        """
+        Analizuje wyniki inwestycyjne Kongresu USA w porównaniu do zwykłych ludzi (S&P 500).
+        Używa ETF-ów:
+        - NANC (Demokraci - Nancy Pelosi Strategy)
+        - KRUZ (Republikanie - Ted Cruz Strategy)
+        - SPY (Benchmark - Rynek)
+        """
+        try:
+            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+            tickers = ['NANC', 'KRUZ', 'SPY']
+            
+            # Pobieramy dane
+            data = yf.download(tickers, start=start_date, progress=False)
+            
+            # Fix MultiIndex (Standardowa procedura)
+            if isinstance(data.columns, pd.MultiIndex):
+                try: 
+                    df = data.xs('Close', axis=1, level=0, drop_level=True)
+                except KeyError:
+                    try: 
+                        df = data.xs('Close', axis=1, level=1, drop_level=True)
+                    except: 
+                        return None
+            else:
+                df = data['Close']
+
+            # Upewniamy się, że mamy wszystkie kolumny
+            # Czasem ETFy są nowe i mogą mieć braki, więc usuwamy NaN
+            df = df.dropna()
+
+            if df.empty: return None
+
+            # Normalizacja (Start = 0%)
+            # Dzięki temu widzimy czysty zysk/stratę od początku okresu
+            df_norm = (df / df.iloc[0] - 1) * 100
+            
+            # Obliczamy "Insider Alpha" (Przewaga nad rynkiem)
+            # Ile Pelosi zarobiła więcej niż zwykły Kowalski?
+            current_nanc = df_norm['NANC'].iloc[-1]
+            current_spy = df_norm['SPY'].iloc[-1]
+            
+            alpha = current_nanc - current_spy
+            
+            return df_norm, alpha
+
+        except Exception as e:
+            print(f"Błąd Congress Tracker: {e}")
+            return None, 0
+
+    def plot_congress_tracker(self, df, alpha):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 7))
+        ax1 = fig.add_subplot(111)
+        
+        # --- 1. RYSOWANIE LINII ---
+        
+        # DEMOKRACI (NANC) - Niebieski
+        # To tutaj zazwyczaj siedzi "Big Tech Insider" (Nancy Pelosi kupuje NVDA, MSFT)
+        ax1.plot(df.index, df['NANC'], color='#2979ff', linewidth=2.5, label='Demokraci (NANC ETF)')
+        
+        # REPUBLIKANIE (KRUZ) - Czerwony
+        # Często więcej energii i przemysłu
+        ax1.plot(df.index, df['KRUZ'], color='#ff1744', linewidth=2.5, label='Republikanie (KRUZ ETF)')
+        
+        # RYNEK (SPY) - Biały/Szary przerywany
+        ax1.plot(df.index, df['SPY'], color='white', linewidth=1.5, linestyle='--', alpha=0.7, label='Zwykli Ludzie (S&P 500)')
+        
+        # --- 2. KOLOROWANIE PRZEWAGI (Insider Advantage) ---
+        # Wypełniamy przestrzeń między Demokratami a Rynkiem
+        # Jeśli Pelosi wygrywa -> Zielona poświata "Insider Profit"
+        ax1.fill_between(df.index, df['NANC'], df['SPY'], where=(df['NANC'] > df['SPY']), 
+                         color='#00ff55', alpha=0.1, label='INSIDER ADVANTAGE (Zysk ponad rynek)')
+        
+        # --- 3. METRYKI KOŃCOWE ---
+        last_date = df.index[-1]
+        nanc_ret = df['NANC'].iloc[-1]
+        kruz_ret = df['KRUZ'].iloc[-1]
+        spy_ret = df['SPY'].iloc[-1]
+        
+        # Kropki na końcu
+        ax1.scatter(last_date, nanc_ret, color='#2979ff', s=100, zorder=10)
+        ax1.scatter(last_date, kruz_ret, color='#ff1744', s=100, zorder=10)
+        ax1.scatter(last_date, spy_ret, color='white', s=80, zorder=10)
+        
+        # Teksty przy kropkach
+        ax1.text(last_date, nanc_ret + 1, f"DEMS: {nanc_ret:+.1f}%", color='#2979ff', fontweight='bold', fontsize=10)
+        ax1.text(last_date, kruz_ret - 2, f"REPS: {kruz_ret:+.1f}%", color='#ff1744', fontweight='bold', fontsize=10)
+        
+        # Tytuł
+        title_status = "KONGRES WYGRYWA Z RYNKIEM 🏛️💰" if alpha > 0 else "KONGRES TRACI (Dziwne... 🤔)"
+        ax1.set_title(f"INSIDER TRADING TRACKER: {title_status}", fontsize=16, color=t['text'], fontweight='bold')
+        ax1.set_ylabel('Zysk z inwestycji (%)', color=t['text'])
+        
+        # Linia zero
+        ax1.axhline(0, color=t['text'], linestyle='-', linewidth=0.5, alpha=0.3)
+        
+        # Legenda
+        ax1.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'])
+        
+        # Stylizacja
+        fig.patch.set_facecolor(t['bg']); ax1.set_facecolor(t['bg'])
+        ax1.grid(True, alpha=0.1, color=t['grid'])
+        ax1.spines['top'].set_visible(False); ax1.spines['right'].set_visible(False)
+        ax1.spines['bottom'].set_color(t['text']); ax1.spines['left'].set_color(t['text'])
+        ax1.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- NOWOŚĆ: HEDGING CALCULATOR (Defense Mode) ---
+    def get_hedging_data(self):
+        """
+        Oblicza poziom defensywy (Hedging Score) na podstawie:
+        1. VIX (Indeks Strachu)
+        2. DXY (Trend Dolara)
+        3. Gold/SPX Ratio (Ucieczka do bezpiecznych przystani)
+        """
+        try:
+            # Pobieramy dane (1 rok)
+            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+            # ^VIX = Volatility Index
+            # DX-Y.NYB = US Dollar Index
+            # GC=F = Gold Futures
+            # ^GSPC = S&P 500
+            tickers = ['^VIX', 'DX-Y.NYB', 'GC=F', '^GSPC']
+            
+            data = yf.download(tickers, start=start_date, progress=False)
+            
+            # Fix MultiIndex
+            if isinstance(data.columns, pd.MultiIndex):
+                try: df = data.xs('Close', axis=1, level=0, drop_level=True)
+                except: 
+                    try: df = data.xs('Close', axis=1, level=1, drop_level=True)
+                    except: return None, 0
+            else:
+                df = data['Close']
+
+            # Uzupełnianie braków
+            df = df.ffill().dropna()
+            
+            if df.empty: return None, 0
+
+            # --- OBLICZENIA WSKAŹNIKÓW ---
+            
+            # 1. Analiza VIX (Ostatnia wartość)
+            last_vix = df['^VIX'].iloc[-1]
+            
+            # 2. Trend DXY (Cena vs SMA 50)
+            dxy_series = df['DX-Y.NYB']
+            dxy_sma50 = dxy_series.rolling(50).mean().iloc[-1]
+            last_dxy = dxy_series.iloc[-1]
+            dxy_trend_bullish = last_dxy > dxy_sma50
+            
+            # 3. Gold vs SPX Ratio (Czy kapitał ucieka z akcji do złota?)
+            ratio = df['GC=F'] / df['^GSPC']
+            ratio_sma50 = ratio.rolling(50).mean().iloc[-1]
+            last_ratio = ratio.iloc[-1]
+            ratio_trend_bullish = last_ratio > ratio_sma50
+            
+            # --- ALGORYTM "DEFENSE SCORE" (0-100%) ---
+            # 0% = Full Risk (Lambo)
+            # 100% = Full Cash (Bunker)
+            
+            score = 0
+            reasons = []
+            
+            # A. Ocena VIX (Strach)
+            if last_vix < 15:
+                score += 0 # Spokój
+                reasons.append("VIX nisko (Spokój)")
+            elif 15 <= last_vix < 20:
+                score += 10 # Lekki niepokój
+            elif 20 <= last_vix < 25:
+                score += 30 # Strach
+                reasons.append(f"VIX wysoki ({last_vix:.1f})")
+            elif 25 <= last_vix < 30:
+                score += 50 # Panika
+                reasons.append("VIX paniczny!")
+            else: # > 30
+                score += 80 # Krach
+                reasons.append("VIX KRACH (>30)!")
+                
+            # B. Ocena DXY (Dolar)
+            if dxy_trend_bullish:
+                score += 20
+                reasons.append("Dolar rośnie (Risk Off)")
+            
+            # C. Ocena Gold/SPX (Rotacja defensywna)
+            if ratio_trend_bullish:
+                score += 10
+                reasons.append("Złoto bije Akcje")
+                
+            # Limit 100%
+            score = min(score, 100)
+            
+            # Zwracamy dane do wykresu oraz wynik
+            result_data = {
+                'vix': df['^VIX'],
+                'ratio': ratio,
+                'reasons': reasons
+            }
+            
+            return result_data, score
+
+        except Exception as e:
+            print(f"Błąd Hedging Calc: {e}")
+            return None, 0
+
+    def plot_hedging_cockpit(self, data, score):
+        if data is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(10, 8))
+        
+        # Układ: Góra (Pasek Obronny), Dół (Wykres VIX vs Ratio)
+        gs = fig.add_gridspec(2, 1, height_ratios=[1, 2])
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1])
+        
+        # --- WYKRES 1: PASEK STANU (DEFENSE METER) ---
+        
+        # Kolor paska zależny od wyniku
+        if score < 20: 
+            bar_color = '#00ff55' # Zielony (Atak)
+            status = "TRYB ATAKU (Risk On)"
+        elif score < 50: 
+            bar_color = '#ffd700' # Żółty (Ostrożność)
+            status = "TRYB OSTROŻNY (Neutral)"
+        else: 
+            bar_color = '#ff0055' # Czerwony (Obrona)
+            status = "TRYB BUNKRA (Risk Off)"
+            
+        # Rysujemy pasek tła i pasek wyniku
+        ax1.barh(0, 100, color=t['text'], alpha=0.1, height=0.5) # Tło
+        ax1.barh(0, score, color=bar_color, alpha=0.9, height=0.5) # Wynik
+        
+        # Teksty
+        ax1.text(50, 0, f"Zalecana Gotówka/Hedging: {score}%", ha='center', va='center', 
+                 color='white' if score > 50 else t['text'], fontweight='bold', fontsize=14)
+        
+        ax1.set_title(f"SYSTEM OBRONNY: {status}", fontsize=16, color=t['text'], fontweight='bold')
+        ax1.axis('off') # Ukrywamy osie dla paska
+        
+        # --- WYKRES 2: VIX vs GOLD/SPX (Dlaczego?) ---
+        
+        # Oś lewa: VIX (Strach) - Czerwona linia
+        vix = data['vix']
+        ax2.plot(vix.index, vix, color='#ff0055', linewidth=2, label='VIX (Strach)')
+        ax2.axhline(20, color='#ff0055', linestyle='--', alpha=0.5, linewidth=1) # Poziom ostrzegawczy
+        ax2.fill_between(vix.index, vix, 20, where=(vix > 20), color='#ff0055', alpha=0.15)
+        
+        ax2.set_ylabel('Indeks Strachu (VIX)', color='#ff0055', fontweight='bold')
+        ax2.tick_params(axis='y', labelcolor='#ff0055', colors=t['text'])
+        ax2.tick_params(axis='x', colors=t['text'])
+        
+        # Oś prawa: Gold/SPX Ratio (Ucieczka) - Złota linia
+        ax3 = ax2.twinx()
+        ratio = data['ratio']
+        # Normalizujemy do widoku (żeby pasowało do VIX) lub po prostu rysujemy trend
+        ax3.plot(ratio.index, ratio, color='#ffd700', linewidth=1.5, linestyle=':', label='Złoto vs S&P 500')
+        
+        ax3.set_ylabel('Siła Złota względem Akcji', color='#ffd700', fontweight='bold')
+        ax3.tick_params(axis='y', labelcolor='#ffd700', colors=t['text'])
+        
+        # Kosmetyka
+        ax3.spines['top'].set_visible(False); ax3.spines['left'].set_visible(False)
+        ax3.spines['right'].set_visible(False); ax3.spines['bottom'].set_visible(False)
+        ax2.spines['top'].set_visible(False); ax2.spines['right'].set_visible(False)
+        ax2.spines['bottom'].set_color(t['text']); ax2.spines['left'].set_color(t['text'])
+        
+        ax2.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'])
+        ax3.legend(loc='upper right', facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax1.set_facecolor(t['bg']); ax2.set_facecolor(t['bg'])
+        ax2.grid(True, alpha=0.1, color=t['grid'])
+        
+        return fig
+
+    # --- NOWOŚĆ: COMMODITY SUPERCYCLE (Papier vs Rzeczy) ---
+    def get_commodity_supercycle_data(self):
+        """
+        Analizuje relację Surowców do Akcji (S&P 500).
+        Tworzy własny indeks surowcowy (Hard Assets Index) składający się z:
+        1. Energii (Ropa CL=F) - Krew gospodarki.
+        2. Przemysłu (Miedź HG=F) - Dr. Copper (wskaźnik koniunktury).
+        3. Pieniądza (Złoto GC=F) - Ochrona wartości.
+        
+        Porównuje to do S&P 500 (^GSPC).
+        """
+        try:
+            # 10 lat to minimum, żeby zobaczyć cykl surowcowy
+            start_date = (datetime.now() - timedelta(days=365*10)).strftime('%Y-%m-%d')
+            
+            tickers = ['CL=F', 'HG=F', 'GC=F', '^GSPC']
+            
+            data = yf.download(tickers, start=start_date, progress=False)
+            
+            # Fix MultiIndex
+            if isinstance(data.columns, pd.MultiIndex):
+                try: df = data.xs('Close', axis=1, level=0, drop_level=True)
+                except: 
+                    try: df = data.xs('Close', axis=1, level=1, drop_level=True)
+                    except: return None
+            else:
+                df = data['Close']
+
+            # Czyszczenie danych
+            df = df.ffill().dropna()
+            if df.empty: return None
+
+            # --- 1. BUDOWA INDEKSU SUROWCOWEGO ---
+            # Normalizujemy każdy składnik do 100 na początku okresu, 
+            # żeby Ropa (70$) nie była mniej ważna niż Złoto (2000$).
+            
+            norm_oil = (df['CL=F'] / df['CL=F'].iloc[0]) * 100
+            norm_copper = (df['HG=F'] / df['HG=F'].iloc[0]) * 100
+            norm_gold = (df['GC=F'] / df['GC=F'].iloc[0]) * 100
+            
+            # Nasz "Hard Asset Index" (Średnia z trzech)
+            df['Hard_Assets'] = (norm_oil + norm_copper + norm_gold) / 3
+            
+            # --- 2. S&P 500 (PAPER ASSETS) ---
+            df['Paper_Assets'] = (df['^GSPC'] / df['^GSPC'].iloc[0]) * 100
+            
+            # --- 3. RATIO (Klucz do cyklu) ---
+            # Ratio > 1 (lub rosnące) = Surowce wygrywają
+            # Ratio < 1 (lub spadające) = Akcje wygrywają
+            df['Supercycle_Ratio'] = df['Hard_Assets'] / df['Paper_Assets']
+            
+            # Średnia 200-dniowa dla Ratio (Trend)
+            df['Ratio_SMA200'] = df['Supercycle_Ratio'].rolling(window=200).mean()
+            
+            return df
+
+        except Exception as e:
+            print(f"Błąd Supercycle: {e}")
+            return None
+
+    def plot_commodity_supercycle(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 8))
+        ax1 = fig.add_subplot(111)
+        
+        # --- WYKRES RATIO (Linia Główna) ---
+        ratio = df['Supercycle_Ratio']
+        sma = df['Ratio_SMA200']
+        
+        # Kolor linii: Złoty jeśli nad średnią (Surowce), Biały jeśli pod (Akcje)
+        # Rysujemy po prostu jedną linię, a tło powie prawdę
+        ax1.plot(ratio.index, ratio, color='#ff9900', linewidth=2, label='Ratio: Surowce / Akcje')
+        ax1.plot(sma.index, sma, color='grey', linewidth=1, linestyle='--', alpha=0.7, label='Trend (200 SMA)')
+        
+        # --- KOLOROWANIE REŻIMU (REGIME CHANGE) ---
+        
+        # ERA SUROWCÓW (Ratio nad średnią) - Inflacja, Hard Assets
+        ax1.fill_between(ratio.index, ratio, sma, where=(ratio > sma), 
+                         color='#ff9900', alpha=0.2, label='ERA SUROWCÓW (Inflacja / Hard Assets)')
+        
+        # ERA PAPIERU (Ratio pod średnią) - Deflacja, Tech Stocks
+        ax1.fill_between(ratio.index, ratio, sma, where=(ratio <= sma), 
+                         color='#00e5ff', alpha=0.15, label='ERA PAPIERU (Tech / Stocks)')
+        
+        # --- OPISY ---
+        ax1.set_ylabel('Siła Surowców względem S&P 500', color=t['text'], fontweight='bold')
+        ax1.tick_params(colors=t['text'])
+        
+        # Sprawdzamy gdzie jesteśmy dzisiaj
+        last_val = ratio.iloc[-1]
+        last_sma = sma.iloc[-1]
+        
+        if last_val > last_sma:
+            status = "SUPERCYKL SUROWCOWY 🏗️ (Kupuj Złoto/Ropę)"
+            color_st = '#ff9900'
+        else:
+            status = "DOMINACJA AKCJI 📱 (Kupuj Tech/S&P)"
+            color_st = '#00e5ff'
+            
+        ax1.set_title(f"SUPERCYCLE DETECTOR: {status}", fontsize=16, color=color_st, fontweight='bold')
+        
+        # Dodajemy adnotacje "Co robić?"
+        ax1.text(df.index[int(len(df)*0.1)], ratio.max()*0.9, "ROŚNIE = Kupuj Rzeczy (Hard Assets)", color='#ff9900', fontsize=10, fontweight='bold')
+        ax1.text(df.index[int(len(df)*0.1)], ratio.min()*1.1, "SPADA = Kupuj Papier (Tech/Crypto)", color='#00e5ff', fontsize=10, fontweight='bold')
+
+        # Legenda
+        ax1.legend(loc='upper right', facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax1.set_facecolor(t['bg'])
+        ax1.grid(True, alpha=0.1, color=t['grid'])
+        ax1.spines['top'].set_visible(False); ax1.spines['right'].set_visible(False)
+        ax1.spines['bottom'].set_color(t['text']); ax1.spines['left'].set_color(t['text'])
+        
+        return fig
+
+    # --- NAPRAWA: SILVER TIME MACHINE (Robust Data Fetching) ---
+    def get_silver_fractal_prediction(self):
+        """
+        Skanuje historię srebra (SI=F, SLV, XAG-USD).
+        Wersja odporna na błędy Yahoo Finance - próbuje 3 różnych tickerów,
+        aż znajdzie działające dane.
+        """
+        # Lista tickerów do sprawdzenia (w kolejności priorytetu)
+        tickers_to_try = ['SI=F', 'SLV', 'XAG-USD']
+        
+        df_final = None
+        
+        # 1. PĘTLA POBIERANIA (KASKADA)
+        for ticker in tickers_to_try:
+            try:
+                # Pobieramy MAX historię
+                data = yf.download(ticker, period="max", progress=False)
+                
+                if data.empty: continue
+                
+                # --- UNIWERSALNY EKSTRAKTOR KOLUMNY 'CLOSE' ---
+                # Radzi sobie z każdą strukturą, jaką wypluje yfinance
+                temp = None
+                
+                if isinstance(data.columns, pd.MultiIndex):
+                    # Sprawdzamy poziom 0 (np. Price)
+                    if 'Close' in data.columns.get_level_values(0):
+                        temp = data['Close']
+                    # Sprawdzamy poziom 1 (np. Ticker)
+                    elif 'Close' in data.columns.get_level_values(1):
+                        temp = data.xs('Close', axis=1, level=1)
+                else:
+                    if 'Close' in data.columns:
+                        temp = data['Close']
+                
+                if temp is None: continue
+
+                # Upewniamy się, że to Series (jedna kolumna)
+                if isinstance(temp, pd.DataFrame):
+                    # Jeśli nadal DataFrame, bierzemy pierwszą kolumnę
+                    temp = temp.iloc[:, 0]
+                
+                # Czyszczenie
+                temp = temp.dropna()
+                
+                # Wymagamy minimum 500 dni historii do analizy
+                if len(temp) > 500:
+                    df_final = temp
+                    # print(f"Sukces: Pobrano dane srebra z {ticker}")
+                    break # Mamy dane, wychodzimy z pętli
+                    
+            except Exception as e:
+                print(f"Błąd pobierania {ticker}: {e}")
+                continue
+        
+        # Jeśli po pętli nadal nic nie mamy -> Zwracamy błąd
+        if df_final is None: return None, None, None
+
+        try:
+            # --- 2. ALGORYTM FRAKTALNY (Bez zmian) ---
+            df = df_final
+            lookback = 250
+            forecast = 90
+            
+            # Zabezpieczenie przed zbyt krótką historią
+            if len(df) < lookback + forecast: return None, None, None
+            
+            current_pattern = df.iloc[-lookback:].values
+            
+            def normalize(arr):
+                return (arr - np.min(arr)) / (np.max(arr) - np.min(arr)) if np.max(arr) != np.min(arr) else arr
+
+            norm_current = normalize(current_pattern)
+            
+            correlations = []
+            
+            # Skanujemy historię (krok 5 dni)
+            for i in range(0, len(df) - lookback - forecast, 5):
+                hist_window = df.iloc[i : i + lookback].values
+                norm_hist = normalize(hist_window)
+                
+                try:
+                    corr = np.corrcoef(norm_current, norm_hist)[0, 1]
+                    if not np.isnan(corr):
+                        correlations.append({
+                            'index': i,
+                            'date': df.index[i + lookback],
+                            'corr': corr
+                        })
+                except: continue
+            
+            if not correlations: return None, None, None
+            
+            # Top 3 dopasowania
+            top_matches = sorted(correlations, key=lambda x: x['corr'], reverse=True)[:3]
+            
+            projections = []
+            current_last_price = df.iloc[-1]
+            
+            for m in top_matches:
+                idx = m['index'] + lookback
+                future_prices = df.iloc[idx : idx + forecast].values
+                base_price_hist = df.iloc[idx]
+                
+                if base_price_hist == 0: continue
+                
+                roi_curve = future_prices / base_price_hist
+                projected_path = current_last_price * roi_curve
+                projections.append(projected_path)
+            
+            if not projections: return None, None, None
+            
+            avg_projection = np.mean(projections, axis=0)
+            
+            last_date = df.index[-1]
+            future_dates = [last_date + timedelta(days=x) for x in range(1, forecast + 1)]
+            
+            return df.iloc[-lookback:], pd.Series(avg_projection, index=future_dates), top_matches
+
+        except Exception as e:
+            print(f"Krytyczny błąd obliczeń srebra: {e}")
+            import traceback
+            traceback.print_exc()
+            return None, None, None
+
+    def plot_silver_fractal(self, current_df, projection, matches):
+        if current_df is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 7))
+        ax1 = fig.add_subplot(111)
+        
+        # 1. Historia (Ostatni rok)
+        ax1.plot(current_df.index, current_df.values, color='white', linewidth=2, label='XAGUSD (Teraz)')
+        
+        # 2. Projekcja (Przyszłość)
+        if projection is not None:
+            # Łącznik (żeby nie było dziury na wykresie)
+            proj_connected = pd.concat([current_df.iloc[-1:], projection])
+            
+            # Kolor zależny od wyniku
+            end_price = projection.iloc[-1]
+            start_price = current_df.iloc[-1]
+            col_proj = '#00ff55' if end_price > start_price else '#ff0055'
+            
+            ax1.plot(proj_connected.index, proj_connected.values, color=col_proj, 
+                     linestyle='--', linewidth=2.5, label='Ścieżka Fraktalna (Avg Top 3)')
+            
+            # Kropka na końcu
+            ax1.scatter(projection.index[-1], end_price, color=col_proj, s=150, zorder=10, edgecolors='white')
+            chg = ((end_price - start_price) / start_price) * 100
+            ax1.text(projection.index[-1], end_price, f"{chg:+.1f}%", color=col_proj, fontweight='bold', ha='left', va='center')
+
+        # Tytuł i Daty
+        dates_str = ", ".join([m['date'].strftime('%Y') for m in matches])
+        ax1.set_title(f"SILVER TIME MACHINE: Powtórka z lat {dates_str}", fontsize=16, color=t['text'], fontweight='bold')
+        ax1.set_ylabel('Cena Srebra ($)', color='silver', fontweight='bold')
+        
+        # Stylizacja
+        ax1.tick_params(axis='y', labelcolor='silver', colors=t['text'])
+        ax1.tick_params(axis='x', colors=t['text'])
+        
+        ax1.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax1.set_facecolor(t['bg'])
+        ax1.grid(True, alpha=0.15, color=t['grid'])
+        ax1.spines['top'].set_visible(False); ax1.spines['right'].set_visible(False)
+        ax1.spines['bottom'].set_color(t['text']); ax1.spines['left'].set_color(t['text'])
+        
+        return fig
+
+    # --- NOWOŚĆ: SILVER MACRO (5-Year Forecast) ---
+    def get_silver_macro_projection(self):
+        """
+        Wersja długoterminowa (5 LAT).
+        Analizuje 2 lata wstecz (kontekst) i szuka bliźniaków, 
+        które mają co najmniej 5 lat historii "do przodu".
+        """
+        tickers_to_try = ['SI=F', 'SLV', 'XAG-USD']
+        df_final = None
+        
+        # 1. Pobieranie danych (Kaskada)
+        for ticker in tickers_to_try:
+            try:
+                data = yf.download(ticker, period="max", progress=False)
+                if data.empty: continue
+                
+                temp = None
+                if isinstance(data.columns, pd.MultiIndex):
+                    if 'Close' in data.columns.get_level_values(0): temp = data['Close']
+                    elif 'Close' in data.columns.get_level_values(1): temp = data.xs('Close', axis=1, level=1)
+                else:
+                    if 'Close' in data.columns: temp = data['Close']
+                
+                if temp is None: continue
+                if isinstance(temp, pd.DataFrame): temp = temp.iloc[:, 0]
+                
+                temp = temp.dropna()
+                # Potrzebujemy dużo historii: 2 lata (lookback) + 5 lat (forecast) = min 7 lat (~2500 dni)
+                if len(temp) > 2000:
+                    df_final = temp
+                    break
+            except: continue
+        
+        if df_final is None: return None, None, None
+
+        try:
+            df = df_final
+            # PARAMETRY MACRO
+            lookback = 365 * 2  # 2 lata kontekstu (żeby złapać strukturę rynku)
+            forecast = 365 * 5  # 5 lat prognozy
+            
+            if len(df) < lookback + forecast: return None, None, None
+            
+            current_pattern = df.iloc[-lookback:].values
+            
+            def normalize(arr):
+                return (arr - np.min(arr)) / (np.max(arr) - np.min(arr)) if np.max(arr) != np.min(arr) else arr
+
+            norm_current = normalize(current_pattern)
+            correlations = []
+            
+            # Skanujemy (krok 10 dni dla szybkości przy dużej historii)
+            # Kończymy tak, żeby mieć 5 lat danych "po" dopasowaniu
+            end_scan_idx = len(df) - lookback - forecast
+            
+            for i in range(0, end_scan_idx, 10):
+                hist_window = df.iloc[i : i + lookback].values
+                norm_hist = normalize(hist_window)
+                
+                try:
+                    corr = np.corrcoef(norm_current, norm_hist)[0, 1]
+                    if not np.isnan(corr) and corr > 0.50: # Szukamy w miarę dobrych dopasowań
+                        correlations.append({
+                            'index': i,
+                            'date': df.index[i + lookback],
+                            'corr': corr
+                        })
+                except: continue
+            
+            if not correlations: return None, None, None
+            
+            # Bierzemy TOP 3 najlepsze historyczne dopasowania
+            top_matches = sorted(correlations, key=lambda x: x['corr'], reverse=True)[:3]
+            
+            projections = []
+            current_last_price = df.iloc[-1]
+            
+            for m in top_matches:
+                idx = m['index'] + lookback
+                # Pobieramy przyszłość (5 lat)
+                future_prices = df.iloc[idx : idx + forecast].values
+                base_price_hist = df.iloc[idx]
+                
+                if base_price_hist == 0: continue
+                
+                # Skalowanie ROI
+                roi_curve = future_prices / base_price_hist
+                
+                # Aplikujemy do dzisiejszej ceny
+                projected_path = current_last_price * roi_curve
+                projections.append(projected_path)
+            
+            if not projections: return None, None, None
+            
+            # Średnia ścieżka
+            avg_projection = np.mean(projections, axis=0)
+            
+            # Daty przyszłe (5 lat)
+            last_date = df.index[-1]
+            future_dates = [last_date + timedelta(days=x) for x in range(1, len(avg_projection) + 1)]
+            
+            # Zwracamy Series z datami
+            proj_series = pd.Series(avg_projection, index=future_dates)
+            
+            return df.iloc[-lookback:], proj_series, top_matches
+
+        except Exception as e:
+            print(f"Błąd Silver Macro: {e}")
+            return None, None, None
+
+    def plot_silver_macro_projection(self, current_df, projection, matches):
+        if current_df is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 8))
+        ax1 = fig.add_subplot(111)
+        
+        # 1. Historia (Ostatnie 2 lata)
+        ax1.plot(current_df.index, current_df.values, color='white', linewidth=2, label='XAGUSD (Ostatnie 2 lata)')
+        
+        # 2. Projekcja (5 Lat)
+        if projection is not None:
+            # Łącznik
+            seed = pd.Series([current_df.iloc[-1]], index=[current_df.index[-1]])
+            proj_connected = pd.concat([seed, projection])
+            
+            # Analiza trendu
+            start_p = current_df.iloc[-1]
+            end_p = projection.iloc[-1]
+            max_p = projection.max()
+            
+            # Kolor linii: Złoty/Srebrny
+            ax1.plot(proj_connected.index, proj_connected.values, color='#c0c0c0', 
+                     linestyle='--', linewidth=2, label='Średnia Fraktalna (5 Lat)')
+            
+            # SZCZYT w przyszłości
+            top_date = projection.idxmax()
+            top_val = projection.max()
+            
+            # Oznaczenie szczytu
+            ax1.scatter(top_date, top_val, color='#00ff55', s=150, zorder=10, edgecolors='white')
+            ax1.text(top_date, top_val * 1.1, f"TARGET CYKLU\n${top_val:,.0f}", color='#00ff55', fontweight='bold', ha='center')
+            
+            # Oznaczenie końca (5 lat)
+            ax1.scatter(projection.index[-1], end_p, color='#00d4ff', s=100, zorder=10)
+            roi_5y = ((end_p - start_p) / start_p) * 100
+            ax1.text(projection.index[-1], end_p * 0.9, f"Za 5 lat:\n{roi_5y:+.0f}%", color='#00d4ff', fontweight='bold', ha='center')
+
+        # Opisy bliźniaków
+        years = [str(m['date'].year) for m in matches]
+        title_years = ", ".join(years)
+        
+        ax1.set_title(f"SILVER MACRO 5Y: Powtórka z {title_years}?", fontsize=16, color=t['text'], fontweight='bold')
+        ax1.set_ylabel('Cena Srebra ($)', color='silver', fontweight='bold')
+        
+        ax1.tick_params(axis='y', labelcolor='silver', colors=t['text'])
+        ax1.tick_params(axis='x', colors=t['text'])
+        
+        ax1.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax1.set_facecolor(t['bg'])
+        ax1.grid(True, alpha=0.15, color=t['grid'])
+        ax1.spines['top'].set_visible(False); ax1.spines['right'].set_visible(False)
+        ax1.spines['bottom'].set_color(t['text']); ax1.spines['left'].set_color(t['text'])
+        
+        return fig
+
+    # --- NAPRAWA: TRUE INFLATION (Composite: M2 + Gold + Stocks) ---
+    def get_true_inflation_data(self):
+        """
+        Tworzy "Indeks Rzeczywistości" (True Cost of Wealth).
+        Zestawia oficjalne CPI z koszykiem aktywów (M2, Złoto, S&P 500).
+        To pokazuje inflację "stylu życia" i majątku.
+        """
+        try:
+            # 10 lat historii
+            start_date = (datetime.now() - timedelta(days=365*10)).strftime('%Y-%m-%d')
+            end_date = datetime.now()
+            
+            # 1. DANE Z FRED (Miesięczne)
+            # CPIAUCSL = CPI (Oficjalna)
+            # M2SL = M2 (Podaż)
+            fred_df = web.DataReader(['CPIAUCSL', 'M2SL'], 'fred', start_date, end_date)
+            fred_df = fred_df.resample('ME').last().ffill() # Koniec miesiąca
+            
+            # 2. DANE Z YAHOO (Dla Złota i S&P 500)
+            # Musimy je sprowadzić do miesięcznych, żeby pasowały do FRED
+            tickers = ['GC=F', '^GSPC']
+            y_data = yf.download(tickers, start=start_date, progress=False)['Close']
+            
+            # Obsługa MultiIndex (standardowy fix)
+            if isinstance(y_data.columns, pd.MultiIndex):
+                # Próbujemy spłaszczyć
+                try: y_data = y_data.xs('Close', axis=1, level=0, drop_level=True)
+                except: pass
+            
+            # Resampling do miesięcznych (ME) - bierzemy ostatnią cenę w miesiącu
+            y_monthly = y_data.resample('ME').last().ffill()
+            
+            # 3. ŁĄCZENIE
+            # Bierzemy część wspólną dat
+            common_idx = fred_df.index.intersection(y_monthly.index)
+            
+            df = pd.concat([fred_df.loc[common_idx], y_monthly.loc[common_idx]], axis=1)
+            
+            # Upewniamy się że nie ma pustych (dropna)
+            df = df.dropna()
+            
+            # --- NORMALIZACJA (Start = 0%) ---
+            # Wszystko startuje z tego samego punktu
+            df_norm = pd.DataFrame(index=df.index)
+            
+            # Oficjalna (CPI)
+            df_norm['Official_CPI'] = ((df['CPIAUCSL'] / df['CPIAUCSL'].iloc[0]) - 1) * 100
+            
+            # Składniki "Prawdziwej Inflacji"
+            m2_chg = ((df['M2SL'] / df['M2SL'].iloc[0]) - 1) * 100
+            gold_chg = ((df['GC=F'] / df['GC=F'].iloc[0]) - 1) * 100
+            spx_chg = ((df['^GSPC'] / df['^GSPC'].iloc[0]) - 1) * 100
+            
+            # --- COMPOSITE INDEX (Średnia z 3 składników) ---
+            # To jest "Koszt Posiadania Majątku"
+            df_norm['True_Wealth_Cost'] = (m2_chg + gold_chg + spx_chg) / 3
+            
+            # Gap
+            df_norm['The_Gap'] = df_norm['True_Wealth_Cost'] - df_norm['Official_CPI']
+            
+            return df_norm
+
+        except Exception as e:
+            print(f"Błąd True Inflation Composite: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def plot_true_inflation(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 8))
+        ax1 = fig.add_subplot(111)
+        
+        # 1. OFICJALNA INFLACJA (Niebieska - "Matrix")
+        ax1.plot(df.index, df['Official_CPI'], color='#00e5ff', linewidth=2, label='Oficjalne CPI (Koszyk Rządowy)')
+        
+        # 2. INFLACJA MAJĄTKOWA (Czerwona - "Rzeczywistość")
+        ax1.plot(df.index, df['True_Wealth_Cost'], color='#ff0055', linewidth=3, label='Prawdziwy Koszt (M2 + Złoto + S&P)')
+        
+        # 3. WYPEŁNIENIE (THE GAP)
+        ax1.fill_between(df.index, df['Official_CPI'], df['True_Wealth_Cost'], color='#ff0055', alpha=0.15, label='Ukryta Utrata Siły Nabywczej')
+        
+        # Oznaczenia na końcu
+        last_cpi = df['Official_CPI'].iloc[-1]
+        last_real = df['True_Wealth_Cost'].iloc[-1]
+        gap = df['The_Gap'].iloc[-1]
+        
+        # Kropki
+        ax1.scatter(df.index[-1], last_cpi, color='#00e5ff', s=120, zorder=10, edgecolors='white')
+        ax1.scatter(df.index[-1], last_real, color='#ff0055', s=120, zorder=10, edgecolors='white')
+        
+        # Teksty wartości
+        ax1.text(df.index[-1], last_cpi - 15, f"CPI: +{last_cpi:.0f}%", color='#00e5ff', fontweight='bold', ha='right')
+        ax1.text(df.index[-1], last_real + 10, f"MAJĄTEK: +{last_real:.0f}%", color='#ff0055', fontweight='bold', ha='right')
+        
+        # Strzałka GAP
+        mid_idx = int(len(df)*0.85)
+        mid_date = df.index[mid_idx]
+        mid_real = df['True_Wealth_Cost'].iloc[mid_idx]
+        mid_cpi = df['Official_CPI'].iloc[mid_idx]
+        
+        ax1.annotate(f"RÓŻNICA: {gap:.0f}%\n(Tyle zbiedniałeś bez aktywów)", 
+                     xy=(mid_date, (mid_real + mid_cpi)/2), 
+                     ha='center', color='white', fontsize=10, fontweight='bold',
+                     bbox=dict(facecolor=t['bg'], edgecolor='#ff0055', alpha=0.8))
+
+        ax1.set_title(f"CICHY ZŁODZIEJ: CPI vs Koszt Dobrego Życia (10 Lat)", fontsize=16, color=t['text'], fontweight='bold')
+        ax1.set_ylabel('Skumulowany Wzrost (%)', color=t['text'])
+        
+        ax1.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax1.set_facecolor(t['bg'])
+        ax1.grid(True, alpha=0.1, color=t['grid'])
+        ax1.spines['top'].set_visible(False); ax1.spines['right'].set_visible(False)
+        ax1.spines['bottom'].set_color(t['text']); ax1.spines['left'].set_color(t['text'])
+        ax1.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- NOWOŚĆ: VPVR (Volume Profile Visible Range) ---
+    def get_vpvr_data(self):
+        """
+        Oblicza Profil Wolumenu (Gdzie handlowano najwięcej pieniędzy?).
+        Dzieli zakres cenowy na 100 stref (bins) i sumuje wolumen w każdej z nich.
+        """
+        try:
+            # 1. Pobieramy dane (1 rok, interwał godzinny dla precyzji)
+            # interwał 1h daje nam dużo "próbek" cenowych, co tworzy ładny profil
+            data = yf.download('BTC-USD', period="1y", interval="1h", progress=False)
+            
+            # Fix MultiIndex
+            if isinstance(data.columns, pd.MultiIndex):
+                try: df = data.xs('Close', axis=1, level=0, drop_level=True)
+                except: df = data['Close']
+                # Potrzebujemy też wolumenu
+                try: vol = data.xs('Volume', axis=1, level=0, drop_level=True)
+                except: vol = data['Volume']
+            else:
+                df = data['Close']
+                vol = data['Volume']
+
+            # Upewniamy się, że to Series
+            if isinstance(df, pd.DataFrame): df = df.iloc[:, 0]
+            if isinstance(vol, pd.DataFrame): vol = vol.iloc[:, 0]
+
+            # 2. Tworzymy "Koszyki Cenowe" (Histogram)
+            price_min = df.min()
+            price_max = df.max()
+            
+            # Dzielimy zakres cenowy na 120 poziomów
+            bins = np.linspace(price_min, price_max, 120)
+            
+            # 3. Sumujemy wolumen w każdym koszyku
+            # digitize zwraca indeks koszyka dla każdej ceny
+            indices = np.digitize(df, bins)
+            
+            # Sumujemy wolumen dla każdego indeksu
+            volume_profile = np.zeros(len(bins))
+            for i in range(len(vol)):
+                idx = indices[i]
+                if idx < len(volume_profile):
+                    volume_profile[idx] += vol.iloc[i]
+            
+            # 4. Znajdujemy POC (Point of Control) - Cena z największym wolumenem
+            max_vol_idx = np.argmax(volume_profile)
+            poc_price = bins[max_vol_idx]
+            
+            # 5. Znajdujemy Value Area (70% wolumenu)
+            total_vol = np.sum(volume_profile)
+            value_area_vol = total_vol * 0.70
+            
+            # Sortujemy wolumeny malejąco, żeby zebrać 70%
+            sorted_indices = np.argsort(volume_profile)[::-1]
+            current_vol = 0
+            va_indices = []
+            
+            for idx in sorted_indices:
+                current_vol += volume_profile[idx]
+                va_indices.append(idx)
+                if current_vol >= value_area_vol:
+                    break
+            
+            val_high = bins[max(va_indices)] # Value Area High
+            val_low = bins[min(va_indices)]  # Value Area Low
+            
+            return bins, volume_profile, poc_price, val_high, val_low, df.iloc[-1]
+
+        except Exception as e:
+            print(f"Błąd VPVR: {e}")
+            return None, None, None, None, None, None
+
+    def plot_vpvr(self, bins, volume_profile, poc, val_high, val_low, current_price):
+        if bins is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 8))
+        ax = fig.add_subplot(111)
+        
+        # Orientacja pozioma: Y = Cena, X = Wolumen
+        
+        # Kolory słupków
+        # Szary = Poza strefą wartości
+        # Niebieski/Żółty = Wewnątrz Value Area (70%)
+        # Czerwony = POC (Najważniejsza linia)
+        
+        colors = []
+        for b in bins:
+            if b == poc: colors.append('#ff0055') # POC
+            elif val_low <= b <= val_high: colors.append('#00e5ff') # Value Area (Turkus)
+            else: colors.append('#555555') # Poza strefą (Szary)
+            
+        # Rysujemy słupki poziome (barh)
+        # Używamy height jako odstępu między binami
+        height = (bins[-1] - bins[0]) / len(bins) * 0.9
+        ax.barh(bins, volume_profile, height=height, color=colors, alpha=0.6, align='center')
+        
+        # --- LINIE KLUCZOWE ---
+        
+        # 1. POC (Point of Control)
+        ax.axhline(poc, color='#ff0055', linewidth=2, label=f'POC (Magnes): ${poc:,.0f}')
+        
+        # 2. Aktualna Cena
+        ax.axhline(current_price, color='#ffd700', linestyle='--', linewidth=2, label=f'Cena Teraz: ${current_price:,.0f}')
+        
+        # 3. Value Area High/Low
+        ax.axhline(val_high, color='#00e5ff', linestyle=':', linewidth=1, label=f'VA High: ${val_high:,.0f}')
+        ax.axhline(val_low, color='#00e5ff', linestyle=':', linewidth=1, label=f'VA Low: ${val_low:,.0f}')
+        
+        # Wypełnienie tła Value Area
+        # ax.axhspan(val_low, val_high, color='#00e5ff', alpha=0.05)
+
+        # Logika Statusu
+        if current_price > val_high:
+            status = "Wybicie W GÓRĘ (Szukaj longa na re-teście)"
+            s_col = "#00ff55"
+        elif current_price < val_low:
+            status = "Wybicie W DÓŁ (Szukaj shorta na re-teście)"
+            s_col = "#ff0055"
+        else:
+            status = "W KONSOLIDACJI (Ping Pong między bandami)"
+            s_col = "#ffd700"
+            
+        # Tytuły
+        ax.set_title(f"VPVR (Volume Profile): Gdzie leżą pieniądze?", fontsize=16, color=t['text'], fontweight='bold')
+        ax.text(volume_profile.max() * 0.5, bins[-1], status, color=s_col, fontsize=12, fontweight='bold', ha='center')
+        
+        ax.set_ylabel('Poziomy Cenowe ($)', color=t['text'])
+        ax.set_xlabel('Wolumen Obrotu (Ilość akcji)', color=t['text'])
+        
+        # Legenda
+        ax.legend(loc='upper right', facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1, color=t['grid'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text']); ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        
+        return fig
+
 def show_ad_splash():
     if 'ad_shown' not in st.session_state: st.session_state['ad_shown'] = False
     if not st.session_state['ad_shown']:
@@ -8575,6 +9775,9 @@ def main():
     # Inicjalizacja
     app = MarketProbabilityIndex()
     t = app.get_theme_colors()
+
+    # Wyświetlamy Disclaimer w sidebarze
+    app.display_legal_disclaimer()
 
     # --- NOWOŚĆ: URUCHOMIENIE ANALITYKI ---
     app.setup_analytics()
@@ -8632,7 +9835,7 @@ def main():
             padding: 0px !important; 
             line-height: 30px !important; 
             color: #ffffff !important; /* <--- TU TEŻ BIEL */
-            font-weight: bold !important; /* Trochę grubiej dla czytelności */
+            font-weight: 400 !important; /* Trochę grubiej dla czytelności */
         }}
         
         /* Efekt najechania myszką na guzik */
@@ -9052,7 +10255,7 @@ def main():
             with b1:
                 st.caption("🏛️ **MAKRO & CYKLE**")
                 if st.button("🌐 Makro Context"): st.session_state['active_lazy_chart'] = 'macro_context'
-                if st.button("🌐 Macro Mix"): st.session_state['active_lazy_chart'] = 'all_components' # <- TU BYŁ BRAK
+                if st.button("🌐 Macro Mix"): st.session_state['active_lazy_chart'] = 'all_components'
                 if st.button("🏛 TGA Monitor"): st.session_state['active_lazy_chart'] = 'tga_monitor'
                 if st.button("📈 Leading Index"): st.session_state['active_lazy_chart'] = 'business_cycle'
                 if st.button("🌏 Global Liquidity"): st.session_state['active_lazy_chart'] = 'global_liq'
@@ -9067,6 +10270,7 @@ def main():
                 if st.button("💸 Bank Stimulus"): st.session_state['active_lazy_chart'] = 'bank_stimulus'
                 
                 st.caption("💎 **WYCENA (PRO)**")
+                if st.button("🦄 Altcoin Indicator"): st.session_state['active_lazy_chart'] = 'altcoin_bull'
                 if st.button("📅 Sezonowość Stat"): st.session_state['active_lazy_chart'] = 'seasonal_stats'
                 if st.button("🔮 BTC Future(ETF)", key="nostradamus_gold_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_gold'
                 #if st.button("🔮 BTC Future 4.0", key="nostradamus_log_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_log'
@@ -9089,6 +10293,7 @@ def main():
                 if st.button("⚖️ Sentyment Bar"): st.session_state['active_lazy_chart'] = 'sentiment_bars'
                 if st.button("🍩 Fear/Greed"): st.session_state['active_lazy_chart'] = 'sentiment_donut'
                 if st.button("🩸 Radar Likwidacji"): st.session_state['active_lazy_chart'] = 'liquidation'
+                if st.button("📊 VPVR (Profil)"): st.session_state['active_lazy_chart'] = 'vpvr'
                 #if st.button("🩸 Kill Zones (Map)"): st.session_state['active_lazy_chart'] = 'liq_map'
                 if st.button("🫧 Crypto Bubbles"): st.session_state['active_lazy_chart'] = 'bubbles'
                 if st.button("⚖️ ETH/BTC Ratio"): st.session_state['active_lazy_chart'] = 'crypto_rotation'
@@ -9103,9 +10308,16 @@ def main():
                 if st.button("💣 BTC Squeeze"): st.session_state['active_lazy_chart'] = 'squeeze'
                 if st.button("💣 Alt Squeeze"): st.session_state['active_lazy_chart'] = 'alt_squeeze'
                 if st.button("Ξ ETH Squeeze"): st.session_state['active_lazy_chart'] = 'eth_squeeze'
+                
                 st.caption("📊 **ANALIZA TECH Tradycja**")
+                if st.button("🔥 Prawdziwa Inflacja"): st.session_state['active_lazy_chart'] = 'true_inflation'
+                if st.button("🥈 Srebro (5 Lat)"): st.session_state['active_lazy_chart'] = 'silver_macro'
+                if st.button("🥈 Srebro (Fraktale)"): st.session_state['active_lazy_chart'] = 'silver_fractal'
+                if st.button("🏗️ Cykl Surowcowy"): st.session_state['active_lazy_chart'] = 'commodity_supercycle'
+                if st.button("🛡️ Hedging Calc"): st.session_state['active_lazy_chart'] = 'hedging_calc'
+                if st.button("🏛 Insiderzy (Congress)"): st.session_state['active_lazy_chart'] = 'congress_tracker'
                 if st.button("🏛 Architekt Dow Jones", key="dow_architect_btn"): st.session_state['active_lazy_chart'] = 'dow_architect'
-                if st.button("💎 Dow Jones (Graham)", key="graham_dow_btn"): st.session_state['active_lazy_chart'] = 'graham_dow'
+                if st.button("💎 Dow Jones Graham", key="graham_dow_btn"): st.session_state['active_lazy_chart'] = 'graham_dow'
                 if st.button("👻 Duch Grahama", key="graham_btn"): st.session_state['active_lazy_chart'] = 'graham_ghost'
                 if st.button("🏛 Architekt Czasu", key="architect_btn"): st.session_state['active_lazy_chart'] = 'value_architect'
                 if st.button("🎯 Sektor Snajper", key="sniper_btn"): st.session_state['active_lazy_chart'] = 'sector_sniper'
@@ -9718,6 +10930,213 @@ def main():
                             st.error("Błąd obliczeń statystyk.")
                     else:
                         st.error("Błąd pobierania danych historycznych.")
+            elif st.session_state.get('active_lazy_chart') == 'altcoin_bull':
+                
+                with st.spinner("Analizuję cykle Altcoinów (SMA100 vs EMA100 na ETH)..."):
+                    # 1. Pobieranie danych (metoda GET)
+                    df_alt, signals_alt = app.get_altcoin_indicator_data()
+                    
+                    if df_alt is not None:
+                        # 2. Rysowanie wykresu (metoda PLOT)
+                        fig = app.plot_altcoin_indicator(df_alt, signals_alt)
+                        st.pyplot(fig)
+                        
+                        # 3. Opis i dodatki
+                        st.caption("""
+                        ℹ️ **ALTCOIN BULL MARKET INDICATOR (Teoria SMA100 < EMA100)**
+                        \nWykres bazuje na Ethereum (ETH) jako reprezentancie rynku Altcoinów.
+                        \n📉 **Zasada:** Historycznie wielkie hossy na Altcoinach rozpoczynały się, gdy średnia prosta 100-dniowa (SMA100 - niebieska) przecinała w dół średnią wykładniczą 100-dniową (EMA100 - pomarańczowa). Jest to tzw. "Bearish Cross", który paradoksalnie wyznaczał dołek przed parabolą.
+                        """)
+                        
+                        # Wyświetlenie ostatniego sygnału
+                        if not signals_alt.empty:
+                            last_signal_date = signals_alt.index[-1].strftime('%Y-%m-%d')
+                            st.success(f"📅 Ostatni sygnał startu hossy (SMA100 < EMA100): **{last_signal_date}**")
+                    
+                    else:
+                        st.error("Błąd pobierania danych dla wskaźnika Altcoinów.")
+            elif st.session_state.get('active_lazy_chart') == 'congress_tracker':
+                
+                with st.spinner("Przeszukuję raporty giełdowe Kongresu USA (Pelosi & Co)..."):
+                    # 1. Pobieranie danych
+                    c_df, c_alpha = app.get_congress_tracker_data()
+                    
+                    if c_df is not None:
+                        # 2. Rysowanie wykresu
+                        fig = app.plot_congress_tracker(c_df, c_alpha)
+                        st.pyplot(fig)
+                        
+                        # 3. Interpretacja wyników (Sygnały)
+                        if c_alpha > 5.0:
+                            st.error(f"🚨 **ALARM:** Politycy biją rynek aż o **{c_alpha:.1f}%**! Wiedzą coś, czego my nie wiemy (Podejrzenie Insider Tradingu).")
+                        elif c_alpha > 0.0:
+                            st.warning(f"⚠️ **UWAGA:** Politycy zarabiają lepiej niż S&P 500 (+{c_alpha:.1f}%). Warto śledzić ich ruchy.")
+                        else:
+                            st.success(f"✅ **SPOKÓJ:** Kongresmenom w tym roku nie idzie. Zwykły rynek (SPY) wygrywa.")
+                            
+                        # 4. Opis i edukacja
+                        st.caption("""
+                        ℹ️ **INSIDER TRADING TRACKER (Kongres USA)**
+                        \nWykres śledzi wyniki funduszy ETF, które automatycznie kopiują transakcje polityków:
+                        \n🔵 **NANC (Demokraci):** Strategia "Nancy Pelosi". Często Big Tech i innowacje.
+                        \n🔴 **KRUZ (Republikanie):** Strategia "Ted Cruz". Często Energia, Paliwa i Przemysł.
+                        \n⚪ **SPY (S&P 500):** Benchmark zwykłego człowieka.
+                        \n🕵️‍♂️ **Zasada:** Jeśli kolorowe linie gwałtownie odrywają się od białej w górę, oznacza to, że "ludzie przy władzy" agresywnie kupują zwycięskie sektory, zanim dowie się o nich ulica.
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych o Kongresie (ETF NANC/KRUZ).")
+            elif st.session_state.get('active_lazy_chart') == 'hedging_calc':
+                
+                with st.spinner("Uruchamiam procedury obronne (Analiza VIX, DXY, Gold)..."):
+                    # 1. Pobieranie danych
+                    h_data, h_score = app.get_hedging_data()
+                    
+                    if h_data is not None:
+                        # 2. Rysowanie wykresu
+                        fig = app.plot_hedging_cockpit(h_data, h_score)
+                        st.pyplot(fig)
+                        
+                        # 3. Interpretacja i Powody
+                        reasons_text = ", ".join(h_data['reasons']) if h_data['reasons'] else "Rynek jest stabilny."
+                        
+                        if h_score > 50:
+                            st.error(f"🛡️ **ZALECENIE:** Przejdź do defensywy! Sugerowana gotówka/złoto: **{h_score}%** portfela.\n\n**Powody:** {reasons_text}")
+                        elif h_score > 20:
+                            st.warning(f"⚠️ **ZALECENIE:** Zachowaj ostrożność. Sugerowana gotówka: **{h_score}%**.\n\n**Powody:** {reasons_text}")
+                        else:
+                            st.success(f"🚀 **ZALECENIE:** Pełny atak (Risk On). Sugerowana gotówka: **{h_score}%** (tylko na zakupy).")
+                            
+                        # 4. Opis
+                        st.caption("""
+                        ℹ️ **HEDGING CALCULATOR (Inteligentna Ochrona)**
+                        \nAlgorytm analizuje trzy filary strachu:
+                        \n1. **VIX:** Czy inwestorzy panikują na S&P 500?
+                        \n2. **DXY:** Czy uciekają do dolara (gotówki)?
+                        \n3. **Gold/SPX:** Czy uciekają do złota (zamiast akcji)?
+                        \nIm wyższy wynik, tym więcej kapitału powinieneś trzymać w Stablecoinach lub Złocie, czekając na krach, aby odkupić taniej.
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych rynkowych (VIX/DXY).")
+            elif st.session_state.get('active_lazy_chart') == 'commodity_supercycle':
+                
+                with st.spinner("Ważę Ropę, Miedź i Złoto przeciwko S&P 500..."):
+                    # 1. Pobieranie danych
+                    comm_df = app.get_commodity_supercycle_data()
+                    
+                    if comm_df is not None:
+                        # 2. Rysowanie
+                        fig = app.plot_commodity_supercycle(comm_df)
+                        st.pyplot(fig)
+                        
+                        # 3. Metryki (Kto wygrywa 10-lecie?)
+                        # Porównujemy zwrot z ostatnich 10 lat
+                        ret_comm = comm_df['Hard_Assets'].iloc[-1] - 100
+                        ret_paper = comm_df['Paper_Assets'].iloc[-1] - 100
+                        
+                        c1, c2 = st.columns(2)
+                        c1.metric("Surowce (Hard Assets)", f"{ret_comm:+.1f}%", "Energia + Metal")
+                        c2.metric("Akcje (Paper Assets)", f"{ret_paper:+.1f}%", "S&P 500")
+                        
+                        # 4. Opis
+                        st.caption("""
+                        ℹ️ **COMMODITY SUPERCYCLE DETECTOR**
+                        \nHistoria pokazuje, że kapitał krąży między "Rzeczami" a "Papierem".
+                        \n🟠 **Wykres idzie w górę (Era Surowców):** Wysoka inflacja, wojny, braki podaży. Akcje technologiczne radzą sobie słabo. **BTC często zachowuje się wtedy jak cyfrowe złoto.**
+                        \n🔵 **Wykres idzie w dół (Era Papieru):** Niska inflacja, globalizacja, pokój. Akcje Tech i Krypto (jako Tech) rosną parabolicznie.
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych surowcowych (Yahoo Finance Futures).")
+            elif st.session_state.get('active_lazy_chart') == 'silver_fractal':
+                
+                with st.spinner("Przeszukuję archiwa srebra od lat 70-tych..."):
+                    # 1. Pobieranie i Obliczanie
+                    s_curr, s_proj, s_matches = app.get_silver_fractal_prediction()
+                    
+                    if s_curr is not None:
+                        # 2. Wykres
+                        fig = app.plot_silver_fractal(s_curr, s_proj, s_matches)
+                        st.pyplot(fig)
+                        
+                        # 3. Informacje o bliźniakach
+                        st.markdown("### 🧬 Wykryte Bliźniaki Historyczne:")
+                        
+                        cols = st.columns(3)
+                        for i, match in enumerate(s_matches):
+                            year = match['date'].year
+                            similarity = match['corr'] * 100
+                            cols[i].metric(f"Bliźniak #{i+1}", f"{year}", f"Zgodność: {similarity:.1f}%")
+                        
+                        # 4. Opis
+                        st.caption("""
+                        ℹ️ **SILVER TIME MACHINE (Fraktale).**
+                        Srebro jest metalem spekulacyjnym, który często porusza się w identycznych schematach "Pump & Dump".
+                        Algorytm porównał ostatnie 250 dni handlu z całą historią od 1970 roku.
+                        \n⚪ **Biała linia:** Gdzie jesteśmy teraz.
+                        \n🟢/🔴 **Kolorowa linia:** Co stało się w przeszłości po takim samym układzie wykresu (średnia z 3 najbardziej podobnych lat).
+                        """)
+                    else:
+                        st.error("Błąd danych srebra (brak historii lub błąd Yahoo Finance).")
+            elif st.session_state.get('active_lazy_chart') == 'silver_macro':
+                
+                with st.spinner("Symuluję rynek srebra do 2030 roku..."):
+                    # 1. Obliczenia
+                    s_curr, s_proj, s_matches = app.get_silver_macro_projection()
+                    
+                    if s_curr is not None:
+                        # 2. Wykres
+                        st.pyplot(app.plot_silver_macro_projection(s_curr, s_proj, s_matches))
+                        
+                        # 3. Lista bliźniaków
+                        st.info(f"🧬 **GENETYKA RYNKU:** Obecna struktura (2 lata) jest najbardziej podobna do lat: **{', '.join([str(m['date'].year) for m in s_matches])}**.")
+                        
+                        st.caption("""
+                        ℹ️ **SILVER MACRO (5-Year Forecast).**
+                        Program odnalazł w historii momenty, w których srebro zachowywało się identycznie jak przez ostatnie 2 lata.
+                        Następnie nałożył na wykres to, co stało się w tamtych latach przez kolejne 5 lat.
+                        \nSzara przerywana linia to **Twoja mapa drogowa** na najbliższą dekadę.
+                        """)
+                    else:
+                        st.error("Nie znaleziono dopasowań historycznych dla tak długiego okresu.")
+            elif st.session_state.get('active_lazy_chart') == 'true_inflation':
+                
+                with st.spinner("Łączę M2, Złoto i S&P 500 w jeden indeks prawdy..."):
+                    inf_df = app.get_true_inflation_data()
+                    
+                    if inf_df is not None:
+                        st.pyplot(app.plot_true_inflation(inf_df))
+                        
+                        gap = inf_df['The_Gap'].iloc[-1]
+                        
+                        st.error(f"💸 **WNIOSKI:** Przez ostatnie 10 lat rządowe CPI wzrosło o X%, ale koszt utrzymania statusu majątkowego (M2+Gold+Stocks) wzrósł o Y%. Różnica to **{gap:.0f} punktów procentowych**.")
+                        
+                        # --- TUTAJ JEST DODANA NOTATKA, O KTÓRĄ PROSIŁEŚ ---
+                        st.caption("""
+                        ℹ️ **THE SILENT THIEF (Cichy Złodziej).**
+                        \n🔵 **Niebieska Linia (CPI):** O ile wzrosły ceny "chleba i mleka" (koszyk rządowy).
+                        \n🔴 **Czerwona Linia (Koszt Majątku):** Indeks złożony z **Podaży M2 + Złota + S&P 500**.
+                        \nDlaczego tak? Bo sam M2 to tylko papier. Prawdziwa inflacja to utrata Twojej zdolności do kupna aktywów. Jeśli niebieska linia rośnie o 30%, a czerwona o 150%, to znaczy, że **realnie zbiedniałeś w relacji do majątku**, nawet jeśli stać Cię na chleb. To jest dowód na inflację aktywów (Asset Inflation).
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych inflacyjnych.")
+            elif st.session_state.get('active_lazy_chart') == 'vpvr':
+                
+                with st.spinner("Skanuję wolumen na każdym poziomie cenowym (1 rok)..."):
+                    bins, vol_prof, poc, vah, val, curr = app.get_vpvr_data()
+                    
+                    if bins is not None:
+                        st.pyplot(app.plot_vpvr(bins, vol_prof, poc, vah, val, curr))
+                        
+                        st.caption("""
+                        ℹ️ **VPVR (Volume Profile Visible Range).**
+                        Ten wykres pokazuje, przy jakiej cenie odbył się największy handel w ciągu ostatniego roku.
+                        \n🔴 **Czerwona Linia (POC):** Point of Control. To jest "cena sprawiedliwa". Rynek zawsze chce tu wracać. Działa jak najsilniejszy magnes.
+                        \n🔵 **Niebieska Strefa (Value Area):** Tutaj odbyło się 70% handlu.
+                        \n📉 **Jak grać?** 1. Jeśli cena jest **NAD** niebieską strefą -> Silne wsparcie.
+                        2. Jeśli cena jest **POD** niebieską strefą -> Silny opór.
+                        3. Jeśli cena jest w środku -> Szum/Bocznica (odbijanie się od band).
+                        """)
+                    else:
+                        st.error("Błąd obliczeń VPVR.")
         # Pobieranie CSV
         if os.path.isfile("market_log.csv"):
             with open("market_log.csv", "rb") as f: st.download_button("📥 Pobierz CSV", f, "lambo.csv")
