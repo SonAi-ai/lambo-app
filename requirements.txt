@@ -8,3 +8,5 @@ feedparser
 pandas_datareader
 numpy
 textblob
+prophet
+adjustText
