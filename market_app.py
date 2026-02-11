@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from math import pi
 
 # --- KONFIGURACJA WERSJI ---
-APP_VERSION = "1.0"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
+APP_VERSION = "1.1"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
 # ---------------------------
 
 # --- OBSŁUGA PROPHET ---
@@ -10237,7 +10237,7 @@ def main():
 
         # --- 6. STREFA ON-DEMAND (Z SUWAKIEM) ---
     st.divider()
-    st.subheader("🧪 Strefa Danych na Zadanie (On-Demand)")
+    st.subheader("🧪 Strefa On-Demand")
     
     # Proporcje [2, 3] dają więcej miejsca na guziki
     c1, c2 = st.columns([2, 3]) 
@@ -10251,97 +10251,104 @@ def main():
             # 3 KOLUMNY GUZIKÓW
             b1, b2, b3 = st.columns(3)
 
-            # --- KOLUMNA 1: MAKRO & WYCENA ---
+            # --- KOLUMNA 1: MAKROEKONOMIA, FED I SUROWCE ---
             with b1:
-                st.caption("🏛️ **MAKRO & CYKLE**")
-                if st.button("🌐 Makro Context"): st.session_state['active_lazy_chart'] = 'macro_context'
-                if st.button("🌐 Macro Mix"): st.session_state['active_lazy_chart'] = 'all_components'
-                if st.button("🏛 TGA Monitor"): st.session_state['active_lazy_chart'] = 'tga_monitor'
-                if st.button("📈 Leading Index"): st.session_state['active_lazy_chart'] = 'business_cycle'
+                st.caption("🏛️ **MAKRO & FED**")
                 if st.button("🌏 Global Liquidity"): st.session_state['active_lazy_chart'] = 'global_liq'
                 if st.button("📊 Global Liq (Net)"): st.session_state['active_lazy_chart'] = 'global_liquidity'
                 if st.button("🌊 Fed YoY Wave"): st.session_state['active_lazy_chart'] = 'liquidity_wave'
                 if st.button("💸 M2 vs BTC"): st.session_state['active_lazy_chart'] = 'm2_supply'
+                if st.button("🏛 TGA Monitor"): st.session_state['active_lazy_chart'] = 'tga_monitor'
+                
+                st.caption("📉 **CYKL KONIUNKTURALNY**")
                 if st.button("💣 FRED Detonator"): st.session_state['active_lazy_chart'] = 'macro_detonator'
-                if st.button("🏦 Kredyt Bankowy"): st.session_state['active_lazy_chart'] = 'credit_conditions'
                 if st.button("📉 Yield Curve", key="yield_curve_btn"): st.session_state['active_lazy_chart'] = 'yield_curve'
                 if st.button("🚦 NFCI Index"): st.session_state['active_lazy_chart'] = 'nfci_conditions'
+                if st.button("📈 Leading Index"): st.session_state['active_lazy_chart'] = 'business_cycle'
+                if st.button("🌐 Makro Context"): st.session_state['active_lazy_chart'] = 'macro_context'
+                if st.button("🌐 Macro Mix"): st.session_state['active_lazy_chart'] = 'all_components'
+                
+                st.caption("🏦 **KREDYT & BANKI**")
+                if st.button("🏦 Kredyt Bankowy"): st.session_state['active_lazy_chart'] = 'credit_conditions'
                 if st.button("🏦 Credit Impulse"): st.session_state['active_lazy_chart'] = 'credit_impulse'
                 if st.button("💸 Bank Stimulus"): st.session_state['active_lazy_chart'] = 'bank_stimulus'
-                
-                st.caption("💎 **WYCENA (PRO)**")
-                if st.button("🦄 Altcoin Indicator"): st.session_state['active_lazy_chart'] = 'altcoin_bull'
-                if st.button("📅 Sezonowość Stat"): st.session_state['active_lazy_chart'] = 'seasonal_stats'
+
+                st.caption("🏗️ **SUROWCE & INFLACJA**")
+                if st.button("🔥 Prawdziwa Inflacja"): st.session_state['active_lazy_chart'] = 'true_inflation'
+                if st.button("🏗️ Cykl Surowcowy"): st.session_state['active_lazy_chart'] = 'commodity_supercycle'
+                if st.button("🥈 Srebro (5 Lat)"): st.session_state['active_lazy_chart'] = 'silver_macro'
+                if st.button("🥈 Srebro (Fraktale)"): st.session_state['active_lazy_chart'] = 'silver_fractal'
+
+            # --- KOLUMNA 2: RYNKI TRADYCYJNE (AKCJE), WYCENA I RYZYKO ---
+            with b2:
+                st.caption("🏢 **GIEŁDA (STOCKS)**")
+                if st.button("⚔️ Tech War (AIvsBTC)", key="tech_war_btn"): st.session_state['active_lazy_chart'] = 'tech_war'
+                if st.button("⚔️ Chip Wars", key="chip_wars_btn"): st.session_state['active_lazy_chart'] = 'chip_wars'
+                if st.button("📊 Sektory", key="sector_btn"): st.session_state['active_lazy_chart'] = 'sector_rotation'
+                if st.button("🎯 Sektor Snajper", key="sniper_btn"): st.session_state['active_lazy_chart'] = 'sector_sniper'
+                if st.button("🏛 Insiderzy (Congress)"): st.session_state['active_lazy_chart'] = 'congress_tracker'
+
+                st.caption("💎 **WYCENA FUNDAMENTALNA**")
+                if st.button("👻 Duch Grahama", key="graham_btn"): st.session_state['active_lazy_chart'] = 'graham_ghost'
+                if st.button("🏛 Architekt Czasu", key="architect_btn"): st.session_state['active_lazy_chart'] = 'value_architect'
+                if st.button("🏛 Architekt Dow Jones", key="dow_architect_btn"): st.session_state['active_lazy_chart'] = 'dow_architect'
+                if st.button("💎 Dow Jones Graham", key="graham_dow_btn"): st.session_state['active_lazy_chart'] = 'graham_dow'
+
+                st.caption("🧮 **QUANT & RISK**")
+                if st.button("🛡️ Hedging Calc"): st.session_state['active_lazy_chart'] = 'hedging_calc'
+                if st.button("🛡️ VaR (Risk)"): st.session_state['active_lazy_chart'] = 'var_risk'
+                if st.button("🎰 Kelly Crit"): st.session_state['active_lazy_chart'] = 'kelly'
+                if st.button("⚖️ Sharpe Ratio"): st.session_state['active_lazy_chart'] = 'sharpe'
+                if st.button("🤝 Arbitraż"): st.session_state['active_lazy_chart'] = 'spread_arb'
+                if st.button("🎲 Monte Carlo"): st.session_state['active_lazy_chart'] = 'monte_carlo'
+
+            # --- KOLUMNA 3: KRYPTO, AI & TRADING ---
+            with b3:
+                st.caption("🧠 **MODELE AI**")
+                if st.button("🧠 Oracle AI"): st.session_state['active_lazy_chart'] = 'oracle_ai'
+                if st.button("⚡ ZEUS Model"): st.session_state['active_lazy_chart'] = 'zeus_model'
+                if st.button("⏳ CRONOS Time"): st.session_state['active_lazy_chart'] = 'cronos_model'
+                if st.button("🤖 AI Optimizer"): st.session_state['active_lazy_chart'] = 'portfolio_opt'
+                if st.button("🔄 Cykle Overlay"): st.session_state['active_lazy_chart'] = 'cycle_overlay'
+
+                st.caption("🔮 **BTC LONG TERM**")
                 if st.button("🔮 BTC Future(ETF)", key="nostradamus_gold_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_gold'
                 #if st.button("🔮 BTC Future 4.0", key="nostradamus_log_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_log'
                 #if st.button("🔮 BTC Future PRO", key="nostradamus_pro_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_pro'
                 #if st.button("🔮 BTC Future Path", key="nostradamus_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus'
-                if st.button("🐋 Whale Divergence", key="whale_div_btn"): st.session_state['active_lazy_chart'] = 'whale_divergence'
-                if st.button("🩸 Liquidation Heatmap", key="liq_heat_btn"): st.session_state['active_lazy_chart'] = 'liquidation_heatmap'
-                if st.button("📊 MVRV Z-Score"): st.session_state['active_lazy_chart'] = 'mvrv_z_score'
                 if st.button("🔮 Power Law"): st.session_state['active_lazy_chart'] = 'power_law'
-                if st.button("⛏️ Puell Multiple"): st.session_state['active_lazy_chart'] = 'puell_multiple'
-                if st.button("📈 2-Year Multi"): st.session_state['active_lazy_chart'] = 'two_year_multiplier'
-                if st.button("🎯 SuperTrend", key="supertrend_btn"): st.session_state['active_lazy_chart'] = 'supertrend'
-                if st.button("🌟 Golden Ratio"): st.session_state['active_lazy_chart'] = 'golden_ratio'
                 if st.button("🎯 Pi Cycle Top"): st.session_state['active_lazy_chart'] = 'pi_cycle'
+                if st.button("🌟 Golden Ratio"): st.session_state['active_lazy_chart'] = 'golden_ratio'
+                if st.button("📈 2-Year Multi"): st.session_state['active_lazy_chart'] = 'two_year_multiplier'
+                if st.button("📊 MVRV Z-Score"): st.session_state['active_lazy_chart'] = 'mvrv_z_score'
+                if st.button("⛏️ Puell Multiple"): st.session_state['active_lazy_chart'] = 'puell_multiple'
                 if st.button("💎 Mayer Multiple"): st.session_state['active_lazy_chart'] = 'mayer'
 
-            # --- KOLUMNA 2: SENTYMENT & TECH ---
-            with b2:
-                st.caption("🧠 **SENTYMENT**")
+                st.caption("📊 **TRADING & ON-CHAIN**")
+                if st.button("📊 VPVR (Profil)"): st.session_state['active_lazy_chart'] = 'vpvr'
+                if st.button("🩸 Radar Likwidacji"): st.session_state['active_lazy_chart'] = 'liquidation'
+                if st.button("🩸 Liquidation Heatmap", key="liq_heat_btn"): st.session_state['active_lazy_chart'] = 'liquidation_heatmap'
+                if st.button("🐋 Whale Divergence", key="whale_div_btn"): st.session_state['active_lazy_chart'] = 'whale_divergence'
+                if st.button("🕵 Smart Money"): st.session_state['active_lazy_chart'] = 'smart_money'
+                if st.button("🎯 SuperTrend", key="supertrend_btn"): st.session_state['active_lazy_chart'] = 'supertrend'
+                if st.button("⚖️ Sędzia"): st.session_state['active_lazy_chart'] = 'verdict'
                 if st.button("⚖️ Sentyment Bar"): st.session_state['active_lazy_chart'] = 'sentiment_bars'
                 if st.button("🍩 Fear/Greed"): st.session_state['active_lazy_chart'] = 'sentiment_donut'
-                if st.button("🩸 Radar Likwidacji"): st.session_state['active_lazy_chart'] = 'liquidation'
-                if st.button("📊 VPVR (Profil)"): st.session_state['active_lazy_chart'] = 'vpvr'
-                #if st.button("🩸 Kill Zones (Map)"): st.session_state['active_lazy_chart'] = 'liq_map'
-                if st.button("🫧 Crypto Bubbles"): st.session_state['active_lazy_chart'] = 'bubbles'
+
+                st.caption("🦄 **ALTCOINY & INNE**")
+                if st.button("🦄 Altcoin Indicator"): st.session_state['active_lazy_chart'] = 'altcoin_bull'
+                if st.button("💎 Altcoin Gem Hunter", key="gem_btn"): st.session_state['active_lazy_chart'] = 'alt_gems'
                 if st.button("⚖️ ETH/BTC Ratio"): st.session_state['active_lazy_chart'] = 'crypto_rotation'
-                if st.button("🕵 Smart Money"): st.session_state['active_lazy_chart'] = 'smart_money'
-                
-                st.caption("📊 **ANALIZA TECH**")
+                if st.button("🫧 Crypto Bubbles"): st.session_state['active_lazy_chart'] = 'bubbles'
+                if st.button("📅 Sezonowość Stat"): st.session_state['active_lazy_chart'] = 'seasonal_stats'
                 if st.button("🔄 RRG Rotacja"): st.session_state['active_lazy_chart'] = 'rrg_chart'
-                if st.button("📐 Hurst Exp"): st.session_state['active_lazy_chart'] = 'hurst'
-                if st.button("🔮 Fourier Cycle"): st.session_state['active_lazy_chart'] = 'fourier'
-                if st.button("🧬 Fraktale"): st.session_state['active_lazy_chart'] = 'fractals'
-                if st.button("🧬 Genom (3D)"): st.session_state['active_lazy_chart'] = 'genome_3d'
                 if st.button("💣 BTC Squeeze"): st.session_state['active_lazy_chart'] = 'squeeze'
                 if st.button("💣 Alt Squeeze"): st.session_state['active_lazy_chart'] = 'alt_squeeze'
                 if st.button("Ξ ETH Squeeze"): st.session_state['active_lazy_chart'] = 'eth_squeeze'
-                
-                st.caption("📊 **ANALIZA TECH Tradycja**")
-                if st.button("🔥 Prawdziwa Inflacja"): st.session_state['active_lazy_chart'] = 'true_inflation'
-                if st.button("🥈 Srebro (5 Lat)"): st.session_state['active_lazy_chart'] = 'silver_macro'
-                if st.button("🥈 Srebro (Fraktale)"): st.session_state['active_lazy_chart'] = 'silver_fractal'
-                if st.button("🏗️ Cykl Surowcowy"): st.session_state['active_lazy_chart'] = 'commodity_supercycle'
-                if st.button("🛡️ Hedging Calc"): st.session_state['active_lazy_chart'] = 'hedging_calc'
-                if st.button("🏛 Insiderzy (Congress)"): st.session_state['active_lazy_chart'] = 'congress_tracker'
-                if st.button("🏛 Architekt Dow Jones", key="dow_architect_btn"): st.session_state['active_lazy_chart'] = 'dow_architect'
-                if st.button("💎 Dow Jones Graham", key="graham_dow_btn"): st.session_state['active_lazy_chart'] = 'graham_dow'
-                if st.button("👻 Duch Grahama", key="graham_btn"): st.session_state['active_lazy_chart'] = 'graham_ghost'
-                if st.button("🏛 Architekt Czasu", key="architect_btn"): st.session_state['active_lazy_chart'] = 'value_architect'
-                if st.button("🎯 Sektor Snajper", key="sniper_btn"): st.session_state['active_lazy_chart'] = 'sector_sniper'
-                if st.button("📊 Sektory", key="sector_btn"): st.session_state['active_lazy_chart'] = 'sector_rotation'
-                if st.button("⚔️ Tech War (AIvsBTC)", key="tech_war_btn"): st.session_state['active_lazy_chart'] = 'tech_war'
-                if st.button("⚔️ Chip Wars", key="chip_wars_btn"): st.session_state['active_lazy_chart'] = 'chip_wars'
-
-            # --- KOLUMNA 3: QUANT & AI & RISK ---
-            with b3:
-                st.caption("🤖 **MODELE AI**")
-                if st.button("🧠 Oracle AI"): st.session_state['active_lazy_chart'] = 'oracle_ai'
-                if st.button("⚡ ZEUS Model"): st.session_state['active_lazy_chart'] = 'zeus_model'
-                if st.button("⏳ CRONOS Time"): st.session_state['active_lazy_chart'] = 'cronos_model'
-                if st.button("🔄 Cykle Overlay"): st.session_state['active_lazy_chart'] = 'cycle_overlay'
-                if st.button("🤖 AI Optimizer"): st.session_state['active_lazy_chart'] = 'portfolio_opt'
-
-                st.caption("🧮 **QUANT & RISK**")
-                if st.button("💎 Altcoin Gem Hunter", key="gem_btn"): st.session_state['active_lazy_chart'] = 'alt_gems'
-                if st.button("🎲 Monte Carlo"): st.session_state['active_lazy_chart'] = 'monte_carlo'
-                if st.button("🎰 Kelly Crit"): st.session_state['active_lazy_chart'] = 'kelly'
-                if st.button("🛡️ VaR (Risk)"): st.session_state['active_lazy_chart'] = 'var_risk'
-                if st.button("⚖️ Sharpe Ratio"): st.session_state['active_lazy_chart'] = 'sharpe'
-                if st.button("🤝 Arbitraż"): st.session_state['active_lazy_chart'] = 'spread_arb'
-                if st.button("⚖️ Sędzia"): st.session_state['active_lazy_chart'] = 'verdict'
+                if st.button("🧬 Fraktale"): st.session_state['active_lazy_chart'] = 'fractals'
+                if st.button("🧬 Genom (3D)"): st.session_state['active_lazy_chart'] = 'genome_3d'
+                if st.button("📐 Hurst Exp"): st.session_state['active_lazy_chart'] = 'hurst'
+                if st.button("🔮 Fourier Cycle"): st.session_state['active_lazy_chart'] = 'fourier'
 
         with c2:
             chart_type = st.session_state.get('active_lazy_chart')
