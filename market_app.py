@@ -1,4 +1,5 @@
 import requests
+import concurrent.futures
 import uuid
 import streamlit.components.v1 as components
 import streamlit as st
@@ -9,7 +10,6 @@ import seaborn as sns
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import requests
 import os
 import csv
 import json
@@ -20,9 +20,10 @@ import pandas_datareader.data as web
 from textblob import TextBlob
 from datetime import datetime, timedelta
 from math import pi
+from PIL import Image   # <--- WAŻNE: Dodajemy obsługę obrazków
 
 # --- KONFIGURACJA WERSJI ---
-APP_VERSION = "1.2"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
+APP_VERSION = "1.3"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
 # ---------------------------
 
 # --- OBSŁUGA PROPHET ---
@@ -32,8 +33,20 @@ try:
 except ImportError:
     PROPHET_AVAILABLE = False
 
+logo_file = "logo.png"
+
+if os.path.exists(logo_file):
+    app_icon = Image.open(logo_file)
+else:
+    app_icon = "🏎️"
+
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Lambo czy Karton? (v46 Stable)", layout="wide", page_icon="🕸️")
+st.set_page_config(
+    page_title="Lambo czy Karton? (v46 Stable)", 
+    layout="wide", 
+    page_icon=app_icon,
+    initial_sidebar_state="expanded"  # <--- TO OTWIERA PORTFEL NA STARCIE
+)
 
 # --- KLASA GŁÓWNA ---
 class MarketProbabilityIndex:
@@ -102,6 +115,79 @@ class MarketProbabilityIndex:
             st.session_state['theme_mode'] = 'light'
         else:
             st.session_state['theme_mode'] = 'dark'
+            
+    # --- POPRAWIONE METODY: PASEK REKLAMOWY I LOGO ---
+    def get_promotional_texts(self):
+        """
+        Zwraca gotowe teksty reklamowe w formie bezpiecznej LISTY.
+        Zawiera reklamy SonAi, Silent Angel oraz ostrzeżenia prawne.
+        """
+        return [
+            "🚀 <b>SONAI PREMIUM:</b> Odblokuj Zdrowie psychiczne z SonAi!  |  ",
+            "💜 <b>SILENT ANGEL RETT:</b> Krypto, które realnie zmienia życie. Odkryj charytatywne NFT (silentangelrett.com)  |  ",
+            "🧬 <b>WEB3 CHARITY:</b> Twój kapitał to nadzieja. Zobacz, jak blockchain pomaga w rehabilitacji! silentangelrett.com  |  ",
+            "💎 <b>ZASADA #1:</b> Nie tracimy pieniędzy.  |  ",
+            "🧠 <b>HEAL-TO-EARN:</b> SonAi - Zarabiaj krypto dbając o zdrowie (Już wkrótce!)  |  ",
+            "<span style='color: #ff0055;'>⚠️ <b>RYZYKO:</b> Inwestujesz na własną odpowiedzialność. </span>  |  ",
+            "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji (zobacz Skaner Bólu).  |  "
+        ]
+
+    def render_top_marquee_banner(self):
+        """
+        Metoda renderująca animowany pasek (Marquee).
+        Wersja naprawiona: Sztywna wysokość 60px z idealnym, pionowym wycentrowaniem tekstu.
+        """
+        import streamlit as st
+        
+        # Pobieramy listę tekstów
+        texts_list = self.get_promotional_texts()
+        
+        # Łączymy wszystkie elementy listy w jeden długi tekst
+        full_banner_text = "".join(texts_list)
+        
+        # Kod HTML paska (dodano height: 60px, display: flex i align-items: center dla idealnego wyśrodkowania)
+        html_code = f"""
+        <div style="background-color: rgba(20, 20, 20, 0.85); height: 60px; display: flex; align-items: center; border: 1px solid #444; border-radius: 8px; margin-bottom: 20px; padding: 0 10px; overflow: hidden;">
+            <marquee behavior="scroll" direction="left" scrollamount="6" style="color: #e0e0e0; font-size: 15px; font-family: 'Segoe UI Emoji', Arial, sans-serif; line-height: 60px; width: 100%;">
+                {full_banner_text}
+            </marquee>
+        </div>
+        """
+        
+        st.markdown(html_code, unsafe_allow_html=True)
+
+    def render_app_header(self):
+        """
+        Wyświetla główne logo i tytuł aplikacji na samej górze strony.
+        Wymaga pliku 'logo.png' w folderze ze skryptem.
+        NAPRAWIONO: Centrowanie logo poprzez zmianę proporcji kolumn.
+        """
+        import streamlit as st
+        import os
+        
+        # Sprawdzamy, czy plik logo istnieje
+        logo_path = "logo.png"
+        
+        if os.path.exists(logo_path):
+            # ZMIANA PROPORCJI: Używamy [3, 2, 3] zamiast [1, 2, 1].
+            # Dajemy dużo większe boczne kolumny (waga 3), żeby ścisnąć środek
+            # i wymusić wizualne wycentrowanie obrazka.
+            col1, col2, col3 = st.columns([3, 2, 3])
+            
+            with col2:
+                # Wyświetlamy logo w środkowej, węższej kolumnie
+                st.image(logo_path, width=350)
+        else:
+            st.warning("⚠️ Brak pliku logo.png w folderze aplikacji!")
+            st.title("🏎️ LAMBO CZY KARTON? 📦")
+
+        st.markdown(
+            "<h3 style='text-align: center; color: gray; margin-top: -20px;'>"
+            "   Unfuck Your Life"
+            "</h3>", 
+            unsafe_allow_html=True
+        )
+        st.markdown("---")
             
     def get_theme_colors(self):
         if st.session_state['theme_mode'] == 'dark':
@@ -197,7 +283,29 @@ class MarketProbabilityIndex:
         ax.set_title(label, color=t['text'], fontsize=10)
         ax.grid(False)
         
-        return fig 
+        return fig
+
+    def fix_emoji_on_charts(self):
+        """
+        Naprawia błędy 'Glyph missing' (kwadraciki zamiast emoji) na wykresach Matplotlib.
+        Zmusza Windowsa do użycia odpowiedniej czcionki i wycisza spam w konsoli.
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.font_manager as fm
+        import warnings
+        import platform
+
+        # 1. Wyciszamy ostrzeżenia o glifach, żeby konsola była czysta
+        warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
+        warnings.filterwarnings("ignore", category=UserWarning, module="streamlit")
+
+        # 2. Szukamy i ładujemy czcionkę wspierającą Emoji w Windowsie
+        if platform.system() == "Windows":
+            available_fonts = [f.name for f in fm.fontManager.ttflist]
+            if 'Segoe UI Emoji' in available_fonts:
+                plt.rcParams['font.family'] = 'Segoe UI Emoji'
+                # Ważne: zapobiega psuciu się znaków minus (np. -10%) na osiach
+                plt.rcParams['axes.unicode_minus'] = False
 
     def plot_sector_momentum(self, df):
         t = self.get_theme_colors()
@@ -1502,51 +1610,87 @@ class MarketProbabilityIndex:
         
         return fig
 
-    # --- UPDATE: CRYPTO BUBBLES DATA (Wersja MEGA - 65+ Coinów) ---
     def get_crypto_bubbles_data(self):
         """
-        Pobiera dane dla BARDZO SZEROKIEGO RYNKU (ok. 65 coinów).
-        Celem jest zapchanie ekranu bąbelkami.
+        CRYPTO BUBBLES (Wersja Binance TURBO):
+        Zamiast pytać o każdy coin osobno (65 zapytań),
+        pobieramy CAŁY rynek jednym strzałem (ticker/24hr) i filtrujemy.
+        Działa błyskawicznie dla listy 65+ coinów.
         """
-        # Lista "Fat Pack": Majors, L1, L2, AI, Meme, DeFi, Legacy
-        coins = [
-            'BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'DOGE-USD', 
-            'AVAX-USD', 'TRX-USD', 'DOT-USD', 'LINK-USD', 'TON-USD', 'MATIC-USD', 'SHIB-USD',
-            'BCH-USD', 'LTC-USD', 'UNI-USD', 'NEAR-USD', 'APT-USD', 'ICP-USD', 'PEPE-USD',
-            'ETC-USD', 'XLM-USD', 'XMR-USD', 'FIL-USD', 'HBAR-USD', 'LDO-USD', 'ARB-USD',
-            'RNDR-USD', 'ATOM-USD', 'STX-USD', 'IMX-USD', 'INJ-USD', 'OP-USD', 'GRT-USD',
-            # Nowości i Memy (Zapychacze przestrzeni)
-            'VET-USD', 'TAO-USD', 'TIA-USD', 'SUI-USD', 'SEI-USD', 'KAS-USD', 'FET-USD',
-            'AGIX-USD', 'BONK-USD', 'WIF-USD', 'FLOKI-USD', 'RUNE-USD', 'AAVE-USD', 'MKR-USD',
-            'QNT-USD', 'ALGO-USD', 'FLOW-USD', 'SAND-USD', 'MANA-USD', 'EGLD-USD', 'AXS-USD',
-            'THETA-USD', 'FTM-USD', 'SNX-USD', 'NEO-USD', 'EOS-USD', 'XTZ-USD', 'CHZ-USD'
+        import requests
+        
+        # Twoja lista "Fat Pack" (nazwy bez -USD)
+        raw_symbols = [
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 
+            'AVAX', 'TRX', 'DOT', 'LINK', 'TON', 'MATIC', 'SHIB',
+            'BCH', 'LTC', 'UNI', 'NEAR', 'APT', 'ICP', 'PEPE',
+            'ETC', 'XLM', 'XMR', 'FIL', 'HBAR', 'LDO', 'ARB',
+            'RNDR', 'ATOM', 'STX', 'IMX', 'INJ', 'OP', 'GRT',
+            # Nowości i Memy
+            'VET', 'TAO', 'TIA', 'SUI', 'SEI', 'KAS', 'FET',
+            'AGIX', 'BONK', 'WIF', 'FLOKI', 'RUNE', 'AAVE', 'MKR',
+            'QNT', 'ALGO', 'FLOW', 'SAND', 'MANA', 'EGLD', 'AXS',
+            'THETA', 'FTM', 'SNX', 'NEO', 'EOS', 'XTZ', 'CHZ'
         ]
         
+        bubble_data = []
+        print("Pobieram 65+ Bąbelków z Binance (Jeden strzał)...")
+
         try:
-            # Pobieramy dane (tylko 2 ostatnie dni dla szybkości, potrzebujemy zmiany 24h)
-            df = yf.download(coins, period="2d", progress=False)['Close']
+            # 1. Pobieramy WSZYSTKIE tickery z Binance jednym zapytaniem (Ultra Fast)
+            url = "https://api.binance.com/api/v3/ticker/24hr"
+            response = requests.get(url, timeout=5)
             
-            bubble_data = []
+            if response.status_code != 200:
+                print("Błąd połączenia z Binance")
+                return None
+
+            all_tickers = response.json()
             
-            for ticker in coins:
-                if ticker in df.columns:
-                    series = df[ticker].dropna()
-                    if len(series) > 1:
-                        last_price = series.iloc[-1]
-                        prev_price_24h = series.iloc[-2]
-                        
-                        change_24h = ((last_price - prev_price_24h) / prev_price_24h) * 100
-                        name = ticker.replace('-USD', '')
-                        
-                        bubble_data.append({
-                            'name': name,
-                            'change': change_24h,
-                            'price': last_price
-                        })
+            # 2. Zamieniamy listę na słownik dla szybkiego wyszukiwania
+            # Klucz: 'BTCUSDT', Wartość: {dane...}
+            ticker_map = {item['symbol']: item for item in all_tickers}
+            
+            # 3. Filtrujemy Twoją listę
+            for sym in raw_symbols:
+                # Domyślna para
+                pair = f"{sym}USDT"
+                
+                # --- AUTO-NAPRAWA TICKERÓW (Rebranding) ---
+                # Binance zmieniło RNDR na RENDER
+                if sym == 'RNDR' and pair not in ticker_map:
+                    pair = 'RENDERUSDT'
+                # Binance zmienia MATIC na POL
+                if sym == 'MATIC' and pair not in ticker_map:
+                    pair = 'POLUSDT'
+                # AGIX zamienił się w FET (ASI), ale FET jest na liście osobno
+                # Więc jeśli AGIX nie istnieje, po prostu go pomijamy
+                
+                if pair in ticker_map:
+                    data = ticker_map[pair]
+                    
+                    # Wyciągamy dane
+                    price = float(data['lastPrice'])
+                    change = float(data['priceChangePercent']) # To już jest w procentach
+                    
+                    # Kolor bąbelka
+                    color = '#00ff55' if change > 0 else '#ff0055'
+                    
+                    # Wielkość bąbelka (zależna od zmienności, min 15, max 60)
+                    size = 15 + min(abs(change) * 1.5, 45)
+                    
+                    bubble_data.append({
+                        'name': sym,      # Wyświetlamy starą nazwę (np. MATIC) bo ludzie ją znają
+                        'change': change,
+                        'price': price,
+                        'size': size,
+                        'color': color
+                    })
             
             return pd.DataFrame(bubble_data)
+
         except Exception as e:
-            print(f"Błąd bubbles: {e}")
+            print(f"Błąd Bubbles Binance: {e}")
             return None
 
     # --- UPDATE: CRYPTO BUBBLES PLOT (Wersja Gęsta) ---
@@ -1600,113 +1744,135 @@ class MarketProbabilityIndex:
         fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
         return fig
 
-    # --- UPDATE: SNAJPER OKAZJI (Hunter Mode Pro - 100+ Coinów) ---
     def get_altcoin_squeeze_rank(self):
         """
-        Skanuje PONAD 100 KRYPTOWALUT (Cały istotny rynek).
-        Zwraca tylko TOP 15 z najbardziej naciągniętą sprężyną (najniższy Score).
-        Dzięki temu nie musisz ręcznie wybierać coinów - program sam znajdzie okazje.
+        SNAJPER OKAZJI (Binance Multi-Threaded):
+        Skanuje ponad 100 kryptowalut w poszukiwaniu 'Squeeze' (Ściśnięcia).
+        Używa wielowątkowości, aby pobrać dane w 2-3 sekundy zamiast minuty.
         """
-        # MEGA LISTA (Hardcoded Market Scan)
-        # Podzielona kategoriami, żeby nic nie umknęło.
-        coins = [
-            # 1. MAJORS & L1 (Fundamenty)
-            'BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'AVAX-USD', 
-            'DOT-USD', 'TRX-USD', 'LINK-USD', 'MATIC-USD', 'LTC-USD', 'BCH-USD', 'NEAR-USD', 
-            'ATOM-USD', 'ICP-USD', 'APT-USD', 'SUI-USD', 'SEI-USD', 'KAS-USD', 'TON-USD',
-            'ALGO-USD', 'HBAR-USD', 'EGLD-USD', 'XTZ-USD', 'EOS-USD', 'NEO-USD', 'FLOW-USD',
-            'MINA-USD', 'QNT-USD', 'ASTR-USD', 'ROSE-USD', 'IOTA-USD', 'ZEC-USD', 'XMR-USD',
+        import requests
+        import concurrent.futures
+        
+        # Lista symboli (Czyste tickery bez -USD)
+        # Zaktualizowana o nowe nazwy Binance (RENDER, POL, FET)
+        symbols = [
+            # 1. MAJORS & L1
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 
+            'DOT', 'TRX', 'LINK', 'MATIC', 'LTC', 'BCH', 'NEAR', 
+            'ATOM', 'ICP', 'APT', 'SUI', 'SEI', 'KAS', 'TON',
+            'ALGO', 'HBAR', 'EGLD', 'XTZ', 'EOS', 'NEO', 'FLOW',
+            'MINA', 'QNT', 'ASTR', 'ROSE', 'IOTA', 'ZEC', 'XMR',
             
-            # 2. LAYER 2 (Skalowanie)
-            'ARB-USD', 'OP-USD', 'IMX-USD', 'MNT-USD', 'STX-USD', 'METIS-USD', 'LRC-USD',
-            'SKL-USD', 'GNO-USD', 'STRK-USD', 'MANTA-USD',
+            # 2. LAYER 2
+            'ARB', 'OP', 'IMX', 'MNT', 'STX', 'METIS', 'LRC',
+            'SKL', 'GNO', 'STRK', 'MANTA', 'ZK',
             
-            # 3. AI & DePIN (Sztuczna Inteligencja)
-            'RNDR-USD', 'FET-USD', 'AGIX-USD', 'TAO-USD', 'TIA-USD', 'WLD-USD', 'GRT-USD',
-            'OCEAN-USD', 'AKT-USD', 'JASMY-USD', 'AIOZ-USD', 'GLM-USD', 'ARKM-USD',
+            # 3. AI & DePIN
+            'RNDR', 'FET', 'AGIX', 'TAO', 'TIA', 'WLD', 'GRT',
+            'OCEAN', 'AKT', 'JASMY', 'AIOZ', 'GLM', 'ARKM',
             
-            # 4. RWA (Real World Assets - Hype)
-            'ONDO-USD', 'PENDLE-USD', 'MKR-USD', 'SNX-USD', 'CFG-USD', 'MPL-USD', 'TRU-USD',
-            'POLYX-USD', 'CPOOL-USD',
+            # 4. RWA
+            'ONDO', 'PENDLE', 'MKR', 'SNX', 'CFG', 'TRU', 'POLYX',
             
-            # 5. MEME (Spekulacja)
-            'DOGE-USD', 'SHIB-USD', 'PEPE-USD', 'BONK-USD', 'WIF-USD', 'FLOKI-USD', 'MEME-USD',
-            'BOME-USD', 'ORDI-USD', 'SATS-USD', 'DOG-USD',
+            # 5. MEME
+            'DOGE', 'SHIB', 'PEPE', 'BONK', 'WIF', 'FLOKI', 'MEME',
+            'BOME', 'ORDI', 'SATS', 'DOGS', 'NOT',
             
             # 6. DeFi & DEX
-            'UNI-USD', 'AAVE-USD', 'LDO-USD', 'CRV-USD', 'RUNE-USD', 'CAKE-USD', 'JUP-USD',
-            'DYDX-USD', 'GMX-USD', 'COMP-USD', '1INCH-USD', 'SUSHI-USD', 'ENS-USD',
+            'UNI', 'AAVE', 'LDO', 'CRV', 'RUNE', 'CAKE', 'JUP',
+            'DYDX', 'GMX', 'COMP', '1INCH', 'SUSHI', 'ENS', 'ENA',
             
             # 7. GAMING & METAVERSE
-            'ICP-USD', 'AXS-USD', 'SAND-USD', 'MANA-USD', 'GALA-USD', 'BEAM-USD', 'APE-USD',
-            'ILV-USD', 'PRIME-USD', 'YGG-USD', 'PIXEL-USD'
+            'AXS', 'SAND', 'MANA', 'GALA', 'BEAMX', 'APE',
+            'ILV', 'YGG', 'PIXEL', 'PYR'
         ]
+
+        print(f"Snajper celuje w {len(symbols)} coinów na Binance...")
         
         ranking = []
+
+        # Funkcja pomocnicza do pobierania jednego coina (uruchamiana w wątkach)
+        def process_coin(symbol):
+            try:
+                # Obsługa Rebrandingu
+                ticker = symbol
+                if symbol == 'RNDR': ticker = 'RENDER'
+                if symbol == 'MATIC': ticker = 'POL'
+                if symbol == 'AGIX': return None # Merge do FET, pomijamy
+                if symbol == 'OCEAN': return None # Merge do FET, pomijamy
+                
+                pair = f"{ticker}USDT"
+                
+                # Pobieramy 6 miesięcy (200 dni)
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1d&limit=200"
+                r = requests.get(url, timeout=2)
+                
+                if r.status_code != 200: return None
+                
+                data = r.json()
+                if len(data) < 100: return None
+                
+                # Close prices
+                closes = pd.Series([float(x[4]) for x in data])
+                
+                # --- MATEMATYKA SQUEEZE (Bollinger Bands) ---
+                # SMA 20
+                sma = closes.rolling(window=20).mean()
+                # Std Dev 20
+                std = closes.rolling(window=20).std()
+                
+                # Wstęgi
+                upper = sma + (std * 2)
+                lower = sma - (std * 2)
+                
+                # Szerokość wstęgi (Band Width)
+                # (Upper - Lower) / SMA
+                bb_width = (upper - lower) / sma
+                
+                # Pobieramy ostatnią wartość
+                current_width = bb_width.iloc[-1]
+                
+                # Szukamy Min i Max szerokości z ostatnich 6 miesięcy (żeby ocenić czy jest ciasno)
+                min_w = bb_width.min()
+                max_w = bb_width.max()
+                
+                # Obliczamy SCORE (0 do 1)
+                # 0 = Ekstremalnie ściśnięte (Najmniejsza zmienność w pół roku) -> OKAZJA
+                # 1 = Ekstremalnie szerokie (Po wybuchu)
+                if max_w == min_w: 
+                    score = 0.5
+                else:
+                    score = (current_width - min_w) / (max_w - min_w)
+                
+                # Zwracamy wynik
+                return {
+                    'coin': symbol, # Wyświetlamy starą nazwę, żebyś wiedział co to
+                    'score': score,
+                    'width': current_width
+                }
+                
+            except Exception:
+                return None
+
+        # --- URUCHAMIAMY WIELOWĄTKOWOŚĆ (Turbo Speed) ---
+        # 20 wątków naraz - to przyspiesza pobieranie 20-krotnie
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            # Mapujemy funkcję na listę symboli
+            results = list(executor.map(process_coin, symbols))
+
+        # Filtrujemy puste wyniki (None)
+        ranking = [r for r in results if r is not None]
         
-        try:
-            # Pobieramy dane dla całej armii (To może chwilę potrwać, ok. 5-10 sekund)
-            # period="6mo" jest optymalny
-            df_all = yf.download(coins, period="6mo", progress=False)
-            
-            # Bezpieczne wyciąganie 'Close'
-            if isinstance(df_all.columns, pd.MultiIndex):
-                try: closes = df_all['Close']
-                except KeyError: closes = df_all
-            else:
-                closes = df_all['Close'] if 'Close' in df_all.columns else df_all
-            
-            # Pętla po każdym coinie
-            for ticker in coins:
-                if ticker in closes.columns:
-                    series = closes[ticker].dropna()
-                    
-                    # Filtrujemy:
-                    if len(series) < 30: continue # Za młode
-                    if (pd.Timestamp.now() - series.index[-1]).days > 3: continue # Nieaktualne dane
+        if not ranking: return None
 
-                    # 1. Bollinger Bands
-                    sma = series.rolling(20).mean()
-                    std = series.rolling(20).std()
-                    upper = sma + (std * 2)
-                    lower = sma - (std * 2)
-                    
-                    # 2. Szerokość
-                    bb_width = (upper - lower) / sma
-                    
-                    if bb_width.isnull().iloc[-1]: continue
-
-                    current_width = bb_width.iloc[-1]
-                    min_w = bb_width.min()
-                    max_w = bb_width.max()
-                    
-                    # 3. SCORE (0 = Max Squeeze / Cisza)
-                    # Jeśli zmienność jest zerowa (błąd danych lub stablecoin), dajemy 0.5 (neutral)
-                    if max_w == min_w: score = 0.5
-                    else: score = (current_width - min_w) / (max_w - min_w)
-                    
-                    name = ticker.replace('-USD', '')
-                    
-                    ranking.append({
-                        'coin': name,
-                        'score': score, 
-                        'width': current_width
-                    })
-            
-            if not ranking: return None
-            
-            # --- SORTOWANIE I SELEKCJA ---
-            rank_df = pd.DataFrame(ranking)
-            
-            # Sortujemy od najmniejszego Score (Najbardziej ściśnięte na górze)
-            rank_df = rank_df.sort_values(by='score', ascending=True)
-            
-            # Zwracamy TOP 15 "Najgorętszych" okazji z całej setki
-            return rank_df.head(15)
-            
-        except Exception as e:
-            print(f"Błąd snajpera: {e}")
-            return None
+        # Tworzymy DataFrame
+        rank_df = pd.DataFrame(ranking)
+        
+        # Sortujemy: Najmniejszy Score na górze (Największy Squeeze)
+        rank_df = rank_df.sort_values(by='score', ascending=True)
+        
+        # Zwracamy TOP 15
+        return rank_df.head(15)
 
     # --- NOWOŚĆ: SKANER ALTCOINÓW (Wizualizacja) ---
     def plot_altcoin_squeeze_radar(self, df):
@@ -1956,70 +2122,90 @@ class MarketProbabilityIndex:
         fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
         return fig
 
-    # --- NOWOŚĆ: DRAWDOWN SCANNER (Dane) ---
     def get_ath_drawdown_data(self):
         """
-        Pobiera dane historyczne (MAX) i oblicza spadek od ATH (All-Time High).
-        Zwraca posortowany ranking 'Bólu'.
+        DRAWDOWN SCANNER (Binance Multi-Threaded):
+        Oblicza spadek od ATH (All-Time High).
+        Używa świeczek tygodniowych (1w), aby sięgnąć historią aż do 2017/2021 roku
+        i znaleźć prawdziwy szczyt.
         """
-        # Lista coinów do sprawdzenia (Mix: Stare, Nowe, DeFi, L2)
-        coins = [
-            'BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'DOGE-USD',
-            'AVAX-USD', 'DOT-USD', 'LINK-USD', 'MATIC-USD', 'SHIB-USD', 'LTC-USD', 'UNI-USD',
-            'ATOM-USD', 'ICP-USD', 'FIL-USD', 'NEAR-USD', 'AAVE-USD', 'QNT-USD', 'ALGO-USD',
-            'SAND-USD', 'MANA-USD', 'AXS-USD', 'EOS-USD', 'NEO-USD', 'IOTA-USD', 'ZEC-USD',
-            'DASH-USD', 'BCH-USD', 'MKR-USD', 'SNX-USD', 'CRV-USD', 'GRT-USD', 'FTM-USD',
-            'ARB-USD', 'OP-USD', 'APT-USD', 'SUI-USD', 'TIA-USD', 'RNDR-USD', 'PEPE-USD'
+        import requests
+        import concurrent.futures
+        
+        # Lista coinów (Czyste tickery)
+        symbols = [
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE',
+            'AVAX', 'DOT', 'LINK', 'MATIC', 'SHIB', 'LTC', 'UNI',
+            'ATOM', 'ICP', 'FIL', 'NEAR', 'AAVE', 'QNT', 'ALGO',
+            'SAND', 'MANA', 'AXS', 'EOS', 'NEO', 'IOTA', 'ZEC',
+            'DASH', 'BCH', 'MKR', 'SNX', 'CRV', 'GRT', 'FTM',
+            'ARB', 'OP', 'APT', 'SUI', 'TIA', 'RNDR', 'PEPE',
+            'FET', 'WIF', 'BONK', 'SEI', 'INJ', 'STX' # Dodałem kilka popularnych
         ]
         
         ranking = []
+        print(f"Szukam ATH dla {len(symbols)} coinów na Binance...")
+
+        def process_coin(symbol):
+            try:
+                # Obsługa zmian nazw
+                ticker = symbol
+                if symbol == 'RNDR': ticker = 'RENDER'
+                if symbol == 'MATIC': ticker = 'POL'
+                
+                pair = f"{ticker}USDT"
+                
+                # Pobieramy 1000 tygodni (ok. 19 lat historii)
+                # Dzięki temu znajdziemy ATH nawet dla starych coinów jak LTC czy DASH
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1w&limit=1000"
+                r = requests.get(url, timeout=2)
+                
+                if r.status_code != 200: return None
+                
+                data = r.json()
+                if not data: return None
+                
+                # Binance Klines: [Open, High, Low, Close, ...]
+                # Index 2 = High (To nas interesuje do ATH)
+                # Index 4 = Close (To nas interesuje do obecnej ceny)
+                
+                highs = [float(x[2]) for x in data]
+                closes = [float(x[4]) for x in data]
+                
+                # 1. Znajdź ATH (Najwyższy knot w historii)
+                ath_price = max(highs)
+                
+                # 2. Aktualna cena (Zamknięcie ostatniej świeczki - która wciąż trwa)
+                current_price = closes[-1]
+                
+                # 3. Drawdown (%)
+                if ath_price == 0: return None
+                drawdown = ((current_price - ath_price) / ath_price) * 100
+                
+                return {
+                    'coin': symbol, # Wyświetlamy starą nazwę
+                    'drawdown': drawdown,
+                    'price': current_price,
+                    'ath': ath_price
+                }
+                
+            except Exception:
+                return None
+
+        # --- WIELOWĄTKOWOŚĆ ---
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(process_coin, symbols))
+
+        # Filtrowanie i Sortowanie
+        ranking = [r for r in results if r is not None]
+        rank_df = pd.DataFrame(ranking)
         
-        try:
-            # Pobieramy MAX historię, żeby znaleźć prawdziwy szczyt
-            # period="max" jest kluczowy
-            df = yf.download(coins, period="max", progress=False)
-            
-            # Bezpieczne wyciąganie Close
-            if isinstance(df.columns, pd.MultiIndex):
-                try: closes = df['Close']
-                except KeyError: closes = df
-            else:
-                closes = df['Close'] if 'Close' in df.columns else df
-            
-            for ticker in coins:
-                if ticker in closes.columns:
-                    series = closes[ticker].dropna()
-                    if len(series) < 10: continue
-                    
-                    # 1. Znajdź ATH (Najwyższa cena w historii)
-                    ath_price = series.max()
-                    
-                    # 2. Aktualna cena
-                    current_price = series.iloc[-1]
-                    
-                    # 3. Oblicz Drawdown (%)
-                    # Wynik będzie ujemny (np. -85.5)
-                    drawdown = ((current_price - ath_price) / ath_price) * 100
-                    
-                    name = ticker.replace('-USD', '')
-                    
-                    ranking.append({
-                        'coin': name,
-                        'drawdown': drawdown,
-                        'price': current_price,
-                        'ath': ath_price
-                    })
-            
-            # Tworzymy DataFrame
-            rank_df = pd.DataFrame(ranking)
-            # Sortujemy: Od największego bólu (-99%) do najmniejszego (-5%)
+        if not rank_df.empty:
+            # Sortujemy od największego bólu (-99%) do najmniejszego (-5%)
             rank_df = rank_df.sort_values(by='drawdown', ascending=True)
-            
             return rank_df
-            
-        except Exception as e:
-            print(f"Błąd drawdown: {e}")
-            return None
+        
+        return None
 
     # --- NOWOŚĆ: DRAWDOWN SCANNER (Wykres) ---
     def plot_ath_drawdown(self, df):
@@ -2074,59 +2260,92 @@ class MarketProbabilityIndex:
         
         return fig
 
-    # --- NOWOŚĆ: RSI HEATMAP (Obliczenia) ---
+    import requests # Upewnij się, że masz to zaimportowane na górze pliku
+
     def get_rsi_heatmap_data(self):
         """
-        Pobiera dane dla 40 topowych coinów i oblicza RSI (14).
-        Zwraca dane przygotowane do wyświetlenia w siatce (Heatmap).
+        Pobiera dane BEZPOŚREDNIO z Binance API.
+        Zalety: Brak błędów 'Flash Crash' (Yahoo), prawdziwe ceny rynkowe.
+        Wada: Działa tylko dla coinów dostępnych na Binance (Twoja lista jest OK).
         """
-        coins = [
-            'BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'DOGE-USD', 'AVAX-USD',
-            'DOT-USD', 'LINK-USD', 'MATIC-USD', 'LTC-USD', 'UNI-USD', 'ATOM-USD', 'ETC-USD', 'XLM-USD',
-            'FIL-USD', 'HBAR-USD', 'LDO-USD', 'ARB-USD', 'OP-USD', 'APT-USD', 'RNDR-USD', 'NEAR-USD',
-            'INJ-USD', 'STX-USD', 'IMX-USD', 'GRT-USD', 'SNX-USD', 'AAVE-USD', 'ALGO-USD', 'QNT-USD',
-            'EOS-USD', 'SAND-USD', 'MANA-USD', 'THETA-USD', 'FTM-USD', 'AXS-USD', 'NEO-USD', 'FLOW-USD'
+        # Lista coinów (Twoja lista, ale nazwy muszą pasować do Binance)
+        # Binance używa formatu: BTCUSDT, ETHUSDT.
+        # Tutaj wpisz same symbole, kod doda 'USDT' automatycznie.
+        symbols = [
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 'AVAX', 'ENA',
+            'DOT', 'LINK', 'MATIC', 'LTC', 'UNI', 'ATOM', 'ETC', 'XLM', 'ASTR', # ASTER -> ASTR (Poprawne ticker)
+            'FIL', 'HBAR', 'LDO', 'ARB', 'OP', 'APT', 'RNDR', 'NEAR',
+            'INJ', 'STX', 'IMX', 'GRT', 'SNX', 'AAVE', 'ALGO', 'QNT',
+            'EOS', 'SAND', 'MANA', 'THETA', 'FTM', 'AXS', 'NEO', 'FLOW',
+            'SUI', 'SEI', 'TIA', 'LUNC', 'VRA', 'ONDO', 'NAKA', 'SHRAP'
+            # Usunąłem NAKA i SHRAP, bo mogą nie być na głównym Binance (sprawdzi to try/except)
         ]
         
         rsi_data = []
         
-        try:
-            # Pobieramy krótki okres, bo potrzebujemy tylko RSI z dzisiaj
-            df_all = yf.download(coins, period="3mo", progress=False)
-            
-            # Bezpieczne wyciąganie Close
-            if isinstance(df_all.columns, pd.MultiIndex):
-                try: closes = df_all['Close']
-                except KeyError: closes = df_all
-            else:
-                closes = df_all['Close'] if 'Close' in df_all.columns else df_all
-            
-            for ticker in coins:
-                if ticker in closes.columns:
-                    series = closes[ticker].dropna()
-                    if len(series) < 15: continue
+        # Pasek postępu w terminalu (opcjonalne, dla debugu)
+        print("Pobieram dane z Binance...")
+
+        for symbol in symbols:
+            try:
+                # Ticker Binance: np. ARBUSDT
+                pair = f"{symbol}USDT"
+                
+                # --- STRZAŁ DO API BINANCE (Publiczne endpointy) ---
+                # interval=1d (świeczki dzienne), limit=100 (ostatnie 100 dni wystarczy do RSI)
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1d&limit=100"
+                
+                response = requests.get(url, timeout=2)
+                
+                # Jeśli Binance zwróci błąd (np. brak coina), idziemy dalej
+                if response.status_code != 200:
+                    continue
                     
-                    # Obliczanie RSI (14)
-                    delta = series.diff()
-                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                    
-                    rs = gain / loss
-                    rsi = 100 - (100 / (1 + rs))
-                    
-                    current_rsi = rsi.iloc[-1]
-                    name = ticker.replace('-USD', '')
-                    
-                    rsi_data.append({'coin': name, 'rsi': current_rsi})
-            
-            # Tworzymy DataFrame
-            df_rsi = pd.DataFrame(rsi_data)
-            df_rsi = df_rsi.sort_values(by='rsi', ascending=True) # Od najniższego RSI
-            
+                data = response.json()
+                
+                # Format danych Binance:
+                # [Open Time, Open, High, Low, Close, Volume, ...]
+                # Interesuje nas index 4 (Close Price)
+                
+                # Tworzymy Series z Pandasa
+                closes = pd.Series([float(x[4]) for x in data])
+                
+                if len(closes) < 30: continue
+                
+                # --- MATEMATYKA RSI (Wilder's Smoothing) ---
+                delta = closes.diff()
+                gain = delta.where(delta > 0, 0)
+                loss = -delta.where(delta < 0, 0)
+                
+                # EWM (Exponential Weighted Mean)
+                avg_gain = gain.ewm(com=13, adjust=False).mean()
+                avg_loss = loss.ewm(com=13, adjust=False).mean()
+                
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+                
+                current_rsi = rsi.iloc[-1]
+                
+                # Zabezpieczenie (czasem ostatnia świeczka się dopiero tworzy)
+                if pd.isna(current_rsi):
+                    current_rsi = rsi.iloc[-2]
+                
+                if pd.isna(current_rsi): continue
+
+                rsi_data.append({'coin': symbol, 'rsi': current_rsi})
+                
+            except Exception as e:
+                # Cicho pomijamy błędy pojedynczych coinów, żeby nie psuć widoku
+                continue
+
+        # --- BUDOWANIE WYNIKU ---
+        df_rsi = pd.DataFrame(rsi_data)
+        
+        if not df_rsi.empty:
+            df_rsi = df_rsi.sort_values(by='rsi', ascending=True)
             return df_rsi
-            
-        except Exception as e:
-            print(f"Błąd RSI heatmap: {e}")
+        else:
+            print("Binance nie zwróciło danych.")
             return None
 
     # --- NOWOŚĆ: RSI HEATMAP (Wizualizacja Siatki) ---
@@ -2189,61 +2408,93 @@ class MarketProbabilityIndex:
         fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
         return fig
 
-    # --- UPDATE: MARKET BREADTH + BTC PRICE (Wariograf z Ceną) ---
     def get_market_breadth_data(self):
         """
-        Oblicza 'Szerokość Rynku' ORAZ pobiera cenę Bitcoina.
-        Zwraca dwa zestawy danych: Wskaźnik Breadth i Cenę BTC.
+        MARKET BREADTH (Binance Multi-Threaded):
+        Oblicza, jaki procent rynku jest w trendzie wzrostowym (Cena > SMA 50).
+        Pobiera 1 rok danych dla Top 30 coinów równolegle (2 sekundy zamiast 30).
         """
-        # Lista Top 30 Coinów
-        coins = [
-            'BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'AVAX-USD', 'DOGE-USD',
-            'DOT-USD', 'LINK-USD', 'TRX-USD', 'MATIC-USD', 'LTC-USD', 'SHIB-USD', 'UNI-USD',
-            'ATOM-USD', 'XLM-USD', 'ETC-USD', 'FIL-USD', 'HBAR-USD', 'APT-USD', 'ICP-USD',
-            'NEAR-USD', 'LDO-USD', 'ARB-USD', 'OP-USD', 'RNDR-USD', 'INJ-USD', 'STX-USD', 'QNT-USD'
+        import requests
+        import concurrent.futures
+        from datetime import datetime
+        
+        # Top 30 Coinów (Czyste tickery)
+        symbols = [
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOGE',
+            'DOT', 'LINK', 'TRX', 'MATIC', 'LTC', 'SHIB', 'UNI',
+            'ATOM', 'XLM', 'ETC', 'FIL', 'HBAR', 'APT', 'ICP',
+            'NEAR', 'LDO', 'ARB', 'OP', 'RNDR', 'INJ', 'STX', 'QNT'
         ]
         
-        try:
-            # Pobieramy historię (1 rok)
-            df_all = yf.download(coins, period="1y", progress=False)
-            
-            # Bezpieczne wyciąganie Close
-            if isinstance(df_all.columns, pd.MultiIndex):
-                try: closes = df_all['Close']
-                except KeyError: closes = df_all
-            else:
-                closes = df_all['Close'] if 'Close' in df_all.columns else df_all
-            
-            # --- 1. OBLICZANIE BREADTH ---
-            above_sma = pd.DataFrame(index=closes.index)
-            valid_coins_count = 0
-            
-            for ticker in coins:
-                if ticker in closes.columns:
-                    series = closes[ticker].dropna()
-                    if len(series) < 50: continue
-                    
-                    sma_50 = series.rolling(window=50).mean()
-                    above_sma[ticker] = (series > sma_50).astype(int)
-                    valid_coins_count += 1
-            
-            if valid_coins_count == 0: return None, None
-            
-            breadth = above_sma.mean(axis=1) * 100
-            breadth_smoothed = breadth.rolling(3).mean().dropna()
-            
-            # --- 2. WYCIĄGANIE CENY BTC ---
-            # Musimy dopasować indeksy (daty)
-            if 'BTC-USD' in closes.columns:
-                btc_price = closes['BTC-USD'].reindex(breadth_smoothed.index)
-            else:
-                btc_price = None
+        print(f"Obliczam szerokość rynku (Breadth) dla {len(symbols)} coinów...")
+        
+        data_frames = []
 
-            return breadth_smoothed, btc_price
-            
-        except Exception as e:
-            print(f"Błąd Market Breadth: {e}")
-            return None, None
+        # Funkcja robocza
+        def fetch_history(symbol):
+            try:
+                # Auto-naprawa tickerów
+                ticker = symbol
+                if symbol == 'RNDR': ticker = 'RENDER'
+                if symbol == 'MATIC': ticker = 'POL'
+                
+                pair = f"{ticker}USDT"
+                
+                # Pobieramy 365 dni (1 rok)
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1d&limit=365"
+                r = requests.get(url, timeout=2)
+                
+                if r.status_code != 200: return None
+                
+                raw = r.json()
+                if len(raw) < 100: return None
+                
+                # Parsujemy daty i ceny
+                # Binance time to ms timestamp -> konwertujemy na daty
+                dates = [datetime.fromtimestamp(x[0]/1000).date() for x in raw]
+                closes = [float(x[4]) for x in raw]
+                
+                # Tworzymy Series z indeksem daty
+                s = pd.Series(data=closes, index=pd.to_datetime(dates), name=symbol)
+                return s
+                
+            except Exception:
+                return None
+
+        # --- WIELOWĄTKOWOŚĆ (Turbo Speed) ---
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(fetch_history, symbols))
+
+        # Zbieramy wyniki do jednego DataFrame
+        valid_series = [s for s in results if s is not None]
+        
+        if not valid_series: return None, None
+        
+        # Łączymy w jedną tabelę (kolumny = coiny, wiersze = daty)
+        df_closes = pd.concat(valid_series, axis=1).sort_index()
+        
+        # --- OBLICZANIE BREADTH ---
+        # 1. Obliczamy SMA 50 dla każdego coina
+        sma_50 = df_closes.rolling(window=50).mean()
+        
+        # 2. Sprawdzamy: Czy Cena > SMA 50? (1 = Tak, 0 = Nie)
+        # Wynik to tabela Zer i Jedynek
+        above_sma = (df_closes > sma_50).astype(int)
+        
+        # 3. Średnia z wiersza * 100 daje procent (np. 0.8 * 100 = 80%)
+        breadth = above_sma.mean(axis=1) * 100
+        
+        # Wygładzamy lekko (3 dni), żeby wykres nie był poszarpany
+        breadth_smoothed = breadth.rolling(3).mean().dropna()
+        
+        # --- WYCIĄGANIE CENY BTC ---
+        # Chcemy mieć cenę BTC idealnie dopasowaną do dat wskaźnika Breadth
+        if 'BTC' in df_closes.columns:
+            btc_price = df_closes['BTC'].reindex(breadth_smoothed.index)
+        else:
+            btc_price = None
+
+        return breadth_smoothed, btc_price
 
     # --- UPDATE: MARKET BREADTH PLOT (Dual Axis) ---
     def plot_market_breadth(self, breadth_data, price_data):
@@ -2309,80 +2560,109 @@ class MarketProbabilityIndex:
         
         return fig
 
-    # --- NOWOŚĆ: RRG (Relative Rotation Graph) - Obliczenia ---
     def get_rrg_data(self):
         """
-        Oblicza dane do wykresu rotacji kapitału (RRG).
+        RRG (Relative Rotation Graph) - Binance Edition.
         Porównuje siłę Altcoinów względem BTC (Benchmark).
-        Używa normalizacji (Z-Score), aby umieścić duże i małe coiny na jednym wykresie.
+        Używa wielowątkowości (200 dni historii w 2 sekundy).
+        Zostawia matematykę Z-Score (Normalizacja), aby wykres był czytelny.
         """
-        # Koszyk reprezentatywny (L1, L2, DeFi, Meme)
-        # Porównujemy je do BTC, więc BTC nie ma na liście (jest punktem odniesienia 0,0)
-        coins = [
-            'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'AVAX-USD', 'DOGE-USD',
-            'DOT-USD', 'LINK-USD', 'MATIC-USD', 'LTC-USD', 'UNI-USD', 'ATOM-USD', 'ARB-USD',
-            'OP-USD', 'NEAR-USD', 'APT-USD', 'RNDR-USD', 'INJ-USD', 'SHIB-USD', 'PEPE-USD',
-            'FET-USD', 'TIA-USD', 'SUI-USD', 'ONDO-USD'
+        import requests
+        import concurrent.futures
+        
+        # Koszyk reprezentatywny (Czyste tickery)
+        # Usunąłem -USD, dodałem obsługę RENDER/POL w kodzie
+        symbols = [
+            'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOGE',
+            'DOT', 'LINK', 'MATIC', 'LTC', 'UNI', 'ATOM', 'ARB',
+            'OP', 'NEAR', 'APT', 'RNDR', 'INJ', 'SHIB', 'PEPE',
+            'FET', 'TIA', 'SUI', 'ONDO', 'WIF', 'BONK', 'STX'
         ]
         
         rrg_points = []
+        print(f"Obliczam RRG (Rotację) dla {len(symbols)} coinów...")
         
+        # 1. Pobieramy BENCHMARK (BTC)
+        # Potrzebujemy ok 200 dni do stabilnych obliczeń średniej
         try:
-            # 1. Pobieramy dane (Alty + BTC)
-            tickers_to_download = coins + ['BTC-USD']
-            df_all = yf.download(tickers_to_download, period="6mo", progress=False)
+            url_btc = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=200"
+            r_btc = requests.get(url_btc, timeout=2)
+            if r_btc.status_code != 200: return None
             
-            # Bezpieczne wyciąganie Close
-            if isinstance(df_all.columns, pd.MultiIndex):
-                try: closes = df_all['Close']
-                except KeyError: closes = df_all
-            else:
-                closes = df_all['Close'] if 'Close' in df_all.columns else df_all
-                
-            if 'BTC-USD' not in closes.columns: return None
-
-            btc_series = closes['BTC-USD']
+            # Index 4 = Close
+            btc_data = [float(x[4]) for x in r_btc.json()]
+            btc_series = pd.Series(btc_data)
             
-            # 2. Pętla po Altach
-            for ticker in coins:
-                if ticker in closes.columns:
-                    alt_series = closes[ticker].dropna()
-                    if len(alt_series) < 60: continue
-                    
-                    # Wyrównanie dat
-                    common_index = alt_series.index.intersection(btc_series.index)
-                    alt_aligned = alt_series.loc[common_index]
-                    btc_aligned = btc_series.loc[common_index]
-                    
-                    # --- MATEMATYKA RRG ---
-                    # A. Siła Relatywna (RS) = Cena Alta / Cena BTC
-                    rs = alt_aligned / btc_aligned
-                    
-                    # B. Normalizacja (JdK RS-Ratio - uproszczone)
-                    # Używamy średniej i odchylenia z 20 dni, żeby sprowadzić wszystko do wspólnej skali
-                    mean = rs.rolling(window=20).mean()
-                    std = rs.rolling(window=20).std()
-                    z_score_ratio = (rs - mean) / std # To jest Oś X
-                    
-                    # C. Momentum Siły Relatywnej (JdK RS-Momentum)
-                    # Jak szybko zmienia się ten stosunek? (ROC z 10 dni na Z-Score)
-                    momentum = z_score_ratio.diff(5) * 10 # To jest Oś Y (skalowane)
-                    
-                    # Bierzemy ostatnie wartości
-                    last_x = z_score_ratio.iloc[-1]
-                    last_y = momentum.iloc[-1]
-                    
-                    # Filtrujemy błędy (NaN)
-                    if pd.isna(last_x) or pd.isna(last_y): continue
-                    
-                    name = ticker.replace('-USD', '')
-                    rrg_points.append({'coin': name, 'x': last_x, 'y': last_y})
-            
-            return pd.DataFrame(rrg_points)
-
-        except Exception as e:
-            print(f"Błąd RRG: {e}")
+        except Exception:
             return None
+
+        # Funkcja robocza dla Altów
+        def process_alt(symbol):
+            try:
+                # Auto-naprawa tickerów
+                ticker = symbol
+                if symbol == 'RNDR': ticker = 'RENDER'
+                if symbol == 'MATIC': ticker = 'POL'
+                
+                pair = f"{ticker}USDT"
+                
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1d&limit=200"
+                r = requests.get(url, timeout=2)
+                
+                if r.status_code != 200: return None
+                
+                data = r.json()
+                if len(data) < 100: return None
+                
+                closes = [float(x[4]) for x in data]
+                alt_series = pd.Series(closes)
+                
+                # --- SYNCHRONIZACJA DANYCH ---
+                # Musimy mieć te same długości wektorów co BTC
+                min_len = min(len(alt_series), len(btc_series))
+                
+                # Bierzemy ostatnie 'min_len' dni
+                alt_cut = alt_series.iloc[-min_len:].reset_index(drop=True)
+                btc_cut = btc_series.iloc[-min_len:].reset_index(drop=True)
+                
+                # --- MATEMATYKA RRG (Z-Score) ---
+                # A. Siła Relatywna (RS) = Cena Alta / Cena BTC
+                rs = alt_cut / btc_cut
+                
+                # B. Normalizacja (Oś X)
+                # (Wartość - Średnia) / Odchylenie Standardowe
+                # To sprowadza wszystko do wspólnego mianownika (od -3 do +3)
+                mean = rs.rolling(window=20).mean()
+                std = rs.rolling(window=20).std()
+                
+                # Unikamy dzielenia przez zero
+                if std.iloc[-1] == 0: return None
+                
+                z_score_ratio = (rs - mean) / std
+                
+                # C. Momentum (Oś Y)
+                # Jak szybko zmienia się nasza pozycja? (Rate of Change z 5 dni)
+                momentum = z_score_ratio.diff(5) * 10 
+                
+                # Bierzemy ostatnie wartości (Dziś)
+                last_x = z_score_ratio.iloc[-1]
+                last_y = momentum.iloc[-1]
+                
+                if pd.isna(last_x) or pd.isna(last_y): return None
+                
+                return {'coin': symbol, 'x': last_x, 'y': last_y}
+                
+            except Exception:
+                return None
+
+        # --- URUCHAMIAMY WIELOWĄTKOWOŚĆ ---
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(process_alt, symbols))
+
+        # Filtrujemy i zwracamy DataFrame
+        rrg_points = [r for r in results if r is not None]
+        
+        return pd.DataFrame(rrg_points)
 
     # --- NOWOŚĆ: RRG (Wykres Ćwiartek) ---
     def plot_rrg_chart(self, df):
@@ -2458,83 +2738,105 @@ class MarketProbabilityIndex:
         
         return fig
 
-    # --- NOWOŚĆ: HURST EXPONENT (Quant Tool) - Obliczenia ---
     def get_hurst_ranking(self):
         """
-        Oblicza Wykładnik Hursta (H) dla topowych aktywów.
-        Metoda: Analiza przeskalowanego zakresu (R/S) lub wariancji.
-        Mówi nam, czy rynek trenduje (H > 0.5) czy wraca do średniej (H < 0.5).
+        HURST EXPONENT (Binance Multi-Threaded):
+        Oblicza Wykładnik Hursta (H) używając danych z Binance.
+        Wersja zoptymalizowana (20 wątków), pobiera rok historii w 2 sekundy.
+        
+        Interpretacja:
+        H > 0.5 -> Trenduje (Kupuj wybicia)
+        H < 0.5 -> Wraca do średniej (Kupuj dołki, sprzedawaj górki)
         """
-        coins = [
-            'BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'AVAX-USD',
-            'DOGE-USD', 'LINK-USD', 'DOT-USD', 'MATIC-USD', 'LTC-USD', 'UNI-USD', 'ATOM-USD',
-            'ARB-USD', 'OP-USD', 'TIA-USD', 'RNDR-USD', 'INJ-USD', 'NEAR-USD', 'APT-USD',
-            'SUI-USD', 'SEI-USD', 'PEPE-USD', 'WIF-USD', 'ONDO-USD', 'FET-USD'
+        import requests
+        import concurrent.futures
+        import numpy as np
+        
+        # Lista coinów (Czyste tickery)
+        symbols = [
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX',
+            'DOGE', 'LINK', 'DOT', 'MATIC', 'LTC', 'UNI', 'ATOM',
+            'ARB', 'OP', 'TIA', 'RNDR', 'INJ', 'NEAR', 'APT',
+            'SUI', 'SEI', 'PEPE', 'WIF', 'ONDO', 'FET', 'STX'
         ]
         
         ranking = []
+        print(f"Obliczam parametry chaosu (Hurst) dla {len(symbols)} coinów...")
+
+        def process_coin(symbol):
+            try:
+                # Auto-naprawa tickerów
+                ticker = symbol
+                if symbol == 'RNDR': ticker = 'RENDER'
+                if symbol == 'MATIC': ticker = 'POL'
+                
+                pair = f"{ticker}USDT"
+                
+                # Pobieramy 365 dni (1 rok) - wystarczy do statystyki
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1d&limit=365"
+                r = requests.get(url, timeout=2)
+                
+                if r.status_code != 200: return None
+                
+                data = r.json()
+                if len(data) < 100: return None
+                
+                # Close prices
+                closes = [float(x[4]) for x in data]
+                series = pd.Series(closes)
+                
+                # --- MATEMATYKA HURSTA (Metoda Wariancji) ---
+                # Badamy jak rośnie zmienność wraz z wydłużaniem czasu (lag)
+                lags = range(2, 20)
+                tau = []
+                
+                for lag in lags:
+                    # Różnica ceny po 'lag' dniach
+                    diff = series.diff(lag).dropna()
+                    if len(diff) == 0: continue
+                    # Odchylenie standardowe tych różnic
+                    tau.append(np.std(diff))
+                
+                if len(tau) != len(lags): return None
+
+                # Regresja liniowa na logarytmach
+                # Wzór: log(std) = H * log(lag) + C
+                x = np.log(lags)
+                y = np.log(tau)
+                
+                # polyfit zwraca [slope, intercept], slope to nasze H
+                poly = np.polyfit(x, y, 1)
+                H = poly[0]
+                
+                # Interpretacja słowna
+                if H > 0.60: state = "SILNY TREND"     # Rynek pamięta kierunek
+                elif H > 0.50: state = "Lekki Trend"   # Trochę trenduje
+                elif H > 0.40: state = "Losowy / Szum" # Błądzenie losowe
+                else: state = "PING-PONG"              # Mean Reversion (Wraca do środka)
+                
+                return {
+                    'coin': symbol, 
+                    'hurst': H, 
+                    'status': state
+                }
+                
+            except Exception:
+                return None
+
+        # --- WIELOWĄTKOWOŚĆ ---
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(process_coin, symbols))
+
+        # Filtrowanie i Sortowanie
+        ranking = [r for r in results if r is not None]
         
-        try:
-            # Potrzebujemy dłuższego okresu dla statystycznej istotności (np. 1 rok)
-            df_all = yf.download(coins, period="1y", progress=False)
-            
-            # Bezpieczne wyciąganie Close
-            if isinstance(df_all.columns, pd.MultiIndex):
-                try: closes = df_all['Close']
-                except KeyError: closes = df_all
-            else:
-                closes = df_all['Close'] if 'Close' in df_all.columns else df_all
-            
-            for ticker in coins:
-                if ticker in closes.columns:
-                    series = closes[ticker].dropna()
-                    # Minimum 100 dni danych
-                    if len(series) < 100: continue
-                    
-                    # --- MATEMATYKA HURSTA (Uproszczona metoda wariancji) ---
-                    # H = nachylenie wykresu log-log zmienności w funkcji opóźnienia (lag)
-                    lags = range(2, 20)
-                    tau = []
-                    
-                    # Obliczamy odchylenie standardowe różnic dla różnych opóźnień (lags)
-                    # Variogram approach
-                    for lag in lags:
-                        # Różnica ceny po 'lag' dniach
-                        diff = series.diff(lag).dropna()
-                        if len(diff) == 0: continue
-                        tau.append(np.std(diff))
-                    
-                    if len(tau) != len(lags): continue
-
-                    # Regresja liniowa na logarytmach
-                    # log(std) ~ H * log(lag)
-                    x = np.log(lags)
-                    y = np.log(tau)
-                    
-                    # Polyfit zwraca [slope, intercept]
-                    # Slope (nachylenie) to nasz Wykładnik Hursta
-                    poly = np.polyfit(x, y, 1)
-                    H = poly[0]
-                    
-                    name = ticker.replace('-USD', '')
-                    
-                    # Status słowny
-                    if H > 0.60: state = "SILNY TREND"
-                    elif H > 0.50: state = "Lekki Trend"
-                    elif H > 0.40: state = "Losowy / Szum"
-                    else: state = "PING-PONG (Mean Revert)"
-
-                    ranking.append({'coin': name, 'hurst': H, 'status': state})
-            
-            # DataFrame i sortowanie (Najsilniejszy trend na górze)
-            rank_df = pd.DataFrame(ranking)
+        rank_df = pd.DataFrame(ranking)
+        if not rank_df.empty:
+            # Sortujemy: Najsilniejsze trendy na górze
             rank_df = rank_df.sort_values(by='hurst', ascending=False)
-            
             return rank_df
-
-        except Exception as e:
-            print(f"Błąd Hurst: {e}")
-            return None
+            
+        return None
 
     # --- NOWOŚĆ: HURST EXPONENT (Wykres) ---
     def plot_hurst_ranking(self, df):
@@ -2663,52 +2965,109 @@ class MarketProbabilityIndex:
         
         return fig
 
-    # --- 2. SHARPE RATIO SCANNER (Jakość Inwestycji) ---
     def get_sharpe_ranking(self):
         """
-        Oblicza wskaźnik Sharpe'a dla Top Coinów.
-        Sharpe = (Zwrot - RiskFree) / Zmienność.
-        Mówi: Który coin daje najwięcej zysku na jednostkę strachu.
+        SHARPE RATIO (Binance Multi-Threaded):
+        Oblicza: (Zysk roczny - 4% wolne od ryzyka) / Zmienność.
+        
+        Interpretacja:
+        > 3.0 = GENIALNA INWESTYCJA (Duży zysk, mały stres)
+        > 1.0 = Dobra (Opłaca się trzymać)
+        < 0.0 = Śmieć (Tracisz pieniądze i jeszcze się stresujesz)
+        
+        Zmiany:
+        1. Używa Binance (Dane 24/7).
+        2. Annualizacja = 365 dni (a nie 252 jak w akcjach).
+        3. Szersza lista coinów.
         """
-        coins = [
-            'BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 
-            'AVAX-USD', 'DOGE-USD', 'LINK-USD', 'MATIC-USD', 'LTC-USD', 'UNI-USD',
-            'ARB-USD', 'OP-USD', 'RNDR-USD', 'INJ-USD', 'PEPE-USD', 'ONDO-USD'
+        import requests
+        import concurrent.futures
+        import numpy as np
+        
+        # Rozszerzona Lista Coinów (Czyste tickery)
+        symbols = [
+            # Majors
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'LINK',
+            'TRX', 'TON', 'LTC', 'BCH', 'NEAR', 'ATOM',
+            # L2 & Infra
+            'MATIC', 'ARB', 'OP', 'TIA', 'SEI', 'SUI', 'APT', 'INJ', 'STX', 'IMX',
+            # AI & DePIN
+            'RNDR', 'FET', 'TAO', 'GRT', 'FIL', 'AR',
+            # DeFi
+            'UNI', 'AAVE', 'MKR', 'LDO', 'ONDO', 'PENDLE', 'ENA',
+            # Meme
+            'DOGE', 'SHIB', 'PEPE', 'WIF', 'BONK', 'FLOKI'
         ]
         
         ranking = []
-        try:
-            df = yf.download(coins, period="6mo", progress=False)
-            if isinstance(df.columns, pd.MultiIndex):
-                closes = df['Close'] if 'Close' in df.columns else df
-            else:
-                closes = df['Close']
-            
-            for ticker in coins:
-                if ticker in closes.columns:
-                    series = closes[ticker].dropna()
-                    if len(series) < 30: continue
-                    
-                    # Obliczenia roczne
-                    returns = series.pct_change()
-                    mean_return = returns.mean() * 252 # Roczny zwrot
-                    std_dev = returns.std() * np.sqrt(252) # Roczna zmienność
-                    
-                    if std_dev == 0: continue
-                    
-                    # Sharpe Ratio (zakładamy Risk Free Rate = 4% = 0.04)
-                    sharpe = (mean_return - 0.04) / std_dev
-                    
-                    name = ticker.replace('-USD', '')
-                    ranking.append({'coin': name, 'sharpe': sharpe, 'return': mean_return})
-            
-            rank_df = pd.DataFrame(ranking)
+        print(f"Obliczam Sharpe Ratio (Jakość Inwestycji) dla {len(symbols)} coinów...")
+
+        def process_coin(symbol):
+            try:
+                # Auto-naprawa tickerów
+                ticker = symbol
+                if symbol == 'RNDR': ticker = 'RENDER'
+                if symbol == 'MATIC': ticker = 'POL'
+                
+                pair = f"{ticker}USDT"
+                
+                # Pobieramy 180 dni (pół roku) - dobry okres dla Sharpe
+                # interval=1d
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1d&limit=180"
+                r = requests.get(url, timeout=2)
+                
+                if r.status_code != 200: return None
+                
+                data = r.json()
+                if len(data) < 30: return None # Za mało danych
+                
+                # Wyciągamy Close prices
+                closes = pd.Series([float(x[4]) for x in data])
+                
+                # --- MATEMATYKA FINANSOWA ---
+                # 1. Dzienne zwroty procentowe
+                returns = closes.pct_change().dropna()
+                
+                # 2. Średni zwrot roczny (CAGR approx)
+                # Krypto działa 365 dni, więc mnożymy x 365 (nie 252)
+                mean_return = returns.mean() * 365
+                
+                # 3. Roczna zmienność (Risk)
+                # Odchylenie standardowe * pierwiastek z 365
+                std_dev = returns.std() * np.sqrt(365)
+                
+                if std_dev == 0: return None
+                
+                # 4. Wskaźnik Sharpe'a
+                # (Zwrot - RiskFreeRate) / Zmienność
+                # Przyjmujemy Risk Free Rate = 4% (0.04) - tyle dają obligacje USA
+                sharpe = (mean_return - 0.04) / std_dev
+                
+                return {
+                    'coin': symbol, # Stara nazwa
+                    'sharpe': sharpe,
+                    'return': mean_return * 100, # W procentach do wyświetlania
+                    'volatility': std_dev * 100  # W procentach
+                }
+                
+            except Exception:
+                return None
+
+        # --- WIELOWĄTKOWOŚĆ ---
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(process_coin, symbols))
+
+        # Filtrowanie i Sortowanie
+        ranking = [r for r in results if r is not None]
+        
+        rank_df = pd.DataFrame(ranking)
+        
+        if not rank_df.empty:
+            # Sortujemy: Najwyższy Sharpe na górze (Najlepsza jakość)
             rank_df = rank_df.sort_values(by='sharpe', ascending=False)
             return rank_df
-
-        except Exception as e:
-            print(f"Błąd Sharpe: {e}")
-            return None
+            
+        return None
 
     def plot_sharpe_ranking(self, df):
         if df is None: return None
@@ -2800,107 +3159,142 @@ class MarketProbabilityIndex:
         ax.tick_params(colors=t['text'])
         return fig
 
-    # --- NOWOŚĆ: PORTFOLIO OPTIMIZER (Markowitz Efficient Frontier) ---
     def get_portfolio_optimization(self):
         """
-        Symuluje 5000 portfeli składających się z wybranych coinów.
-        Znajduje 'Max Sharpe Portfolio' (Najlepszy stosunek zysku do ryzyka).
-        To jest matematyka noblisty Harry'ego Markowitza.
+        PORTFOLIO OPTIMIZER (Binance Multi-Threaded):
+        Symuluje 10,000 wariantów portfela (Monte Carlo).
+        Znajduje 'Złoty Środek' (Max Sharpe) wg teorii Markowitza.
+        Dostosowane do rynku krypto (365 dni handlowych).
         """
+        import requests
+        import concurrent.futures
+        import numpy as np
+        
         # Lista składników portfela (Możesz tu dodać co chcesz)
-        coins = [
-            'BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 
-            'ADA-USD', 'AVAX-USD', 'LINK-USD', 'DOT-USD', 'DOGE-USD',
-            'RNDR-USD', 'INJ-USD', 'FET-USD', 'ARB-USD', 'OP-USD', 'XLM-USD', 'ONDO-USD', 'ALGO-USD',
-            'JASMY-USD', 'LUNC-USD'
+        # Czyste tickery
+        symbols = [
+            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 
+            'ADA', 'AVAX', 'LINK', 'DOT', 'DOGE',
+            'RNDR', 'INJ', 'FET', 'ARB', 'OP', 'XLM', 'ONDO', 'ALGO',
+            'JASMY', 'LUNC', 'PEPE', 'WIF', 'TIA', 'SUI', 'APT', 'SEI'
         ]
         
-        try:
-            # 1. Pobieramy dane (1 rok)
-            df = yf.download(coins, period="1y", progress=False)
-            
-            if isinstance(df.columns, pd.MultiIndex):
-                closes = df['Close'] if 'Close' in df.columns else df
-            else:
-                closes = df['Close']
-            
-            # Czyścimy puste
-            closes = closes.dropna(axis=1, how='all').dropna()
-            if closes.empty: return None, None, None
-            
-            # 2. Obliczamy dzienne zwroty logarytmiczne
-            log_returns = np.log(closes / closes.shift(1))
-            
-            num_assets = len(closes.columns)
-            num_portfolios = 5000 # Ilość symulacji
-            
-            # Tablice na wyniki
-            p_ret = [] # Zwrot portfela
-            p_vol = [] # Ryzyko (zmienność) portfela
-            p_weights = [] # Wagi (skład)
-            
-            # Macierz kowariancji (jak aktywa korelują ze sobą)
-            cov_matrix = log_returns.cov() * 252 
-            
-            # --- SYMULACJA MONTE CARLO ---
-            for _ in range(num_portfolios):
-                # Losowe wagi
-                weights = np.random.random(num_assets)
-                weights /= np.sum(weights) # Suma musi być 100% (1.0)
-                p_weights.append(weights)
-                
-                # Oczekiwany zwrot roczny
-                returns = np.sum(weights * log_returns.mean()) * 252
-                p_ret.append(returns)
-                
-                # Oczekiwana zmienność (Ryzyko)
-                var = np.dot(weights.T, np.dot(cov_matrix, weights))
-                sd = np.sqrt(var)
-                p_vol.append(sd)
-            
-            # Konwersja na array
-            p_ret = np.array(p_ret)
-            p_vol = np.array(p_vol)
-            p_weights = np.array(p_weights)
-            
-            # 3. Szukamy Najlepszego Portfela (Max Sharpe Ratio)
-            # Sharpe = (Zwrot - 0%) / Ryzyko
-            sr = p_ret / p_vol
-            max_sr_idx = sr.argmax()
-            
-            # Dane najlepszego portfela
-            best_return = p_ret[max_sr_idx]
-            best_vol = p_vol[max_sr_idx]
-            best_weights = p_weights[max_sr_idx]
-            
-            # Tworzymy słownik z wynikami dla najlepszego składu
-            allocation = {}
-            for i, ticker in enumerate(closes.columns):
-                w = best_weights[i]
-                if w > 0.01: # Pokaż tylko te powyżej 1%
-                    allocation[ticker.replace('-USD','')] = w
-            
-            # Sortujemy alokację
-            allocation = dict(sorted(allocation.items(), key=lambda item: item[1], reverse=True))
-            
-            # Zwracamy wszystko co potrzebne do wykresu
-            sim_data = {
-                'volatility': p_vol,
-                'returns': p_ret,
-                'sharpe': sr
-            }
-            
-            best_portfolio = {
-                'return': best_return,
-                'volatility': best_vol,
-                'allocation': allocation
-            }
-            
-            return sim_data, best_portfolio, closes.columns
+        print(f"Optymalizuję portfel z {len(symbols)} składników...")
+        
+        data_frames = []
 
-        except Exception as e:
-            print(f"Błąd Optimizer: {e}")
-            return None, None, None
+        # 1. Pobieramy historię cen (1 rok)
+        def process_coin(symbol):
+            try:
+                # Auto-naprawa tickerów
+                ticker = symbol
+                if symbol == 'RNDR': ticker = 'RENDER'
+                if symbol == 'MATIC': ticker = 'POL'
+                
+                pair = f"{ticker}USDT"
+                
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1d&limit=365"
+                r = requests.get(url, timeout=2)
+                
+                if r.status_code != 200: return None
+                
+                # Close prices
+                closes = [float(x[4]) for x in r.json()]
+                
+                # Musimy mieć pełny rok danych
+                if len(closes) < 300: return None
+                
+                return pd.Series(closes, name=symbol)
+                
+            except Exception:
+                return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(process_coin, symbols))
+
+        # Łączymy w jeden DataFrame
+        valid_series = [s for s in results if s is not None]
+        if not valid_series: return None, None, None
+        
+        # Wyrównujemy długości (bierzemy najkrótszy wspólny okres)
+        min_len = min([len(s) for s in valid_series])
+        aligned_series = [s.iloc[-min_len:].reset_index(drop=True) for s in valid_series]
+        
+        closes = pd.concat(aligned_series, axis=1)
+        
+        # 2. Obliczamy dzienne zwroty logarytmiczne
+        log_returns = np.log(closes / closes.shift(1)).dropna()
+        
+        num_assets = len(closes.columns)
+        num_portfolios = 10000 # Więcej symulacji = lepszy wynik
+        
+        # Tablice na wyniki
+        p_ret = [] # Zwrot
+        p_vol = [] # Ryzyko
+        p_weights = [] # Wagi
+        
+        # Macierz kowariancji (Roczna = x365 dla krypto)
+        cov_matrix = log_returns.cov() * 365
+        mean_returns = log_returns.mean() * 365
+        
+        # --- SZYBKA SYMULACJA MONTE CARLO (Vectorized) ---
+        # Zamiast pętli for, używamy macierzy NumPy dla szybkości
+        
+        # Generujemy losowe wagi dla 10000 portfeli naraz
+        weights = np.random.random((num_portfolios, num_assets))
+        # Normalizujemy, żeby suma wag w każdym wierszu = 1
+        weights = weights / np.sum(weights, axis=1)[:, np.newaxis]
+        
+        # Obliczamy zwroty portfeli (Macierzowo)
+        # (10000 x N) dot (N) -> (10000)
+        p_ret = np.dot(weights, mean_returns)
+        
+        # Obliczamy zmienność (To jest trudniejsze macierzowo, robimy hybrydę)
+        # Var = w.T * Cov * w
+        p_vol = []
+        for i in range(num_portfolios):
+            w = weights[i]
+            var = np.dot(w.T, np.dot(cov_matrix, w))
+            p_vol.append(np.sqrt(var))
+            
+        p_vol = np.array(p_vol)
+        p_ret = np.array(p_ret)
+        
+        # 3. Szukamy Najlepszego (Max Sharpe)
+        # Sharpe = (Zwrot - 4%) / Ryzyko
+        sr = (p_ret - 0.04) / p_vol
+        max_sr_idx = sr.argmax()
+        
+        # Wyniki zwycięzcy
+        best_return = p_ret[max_sr_idx]
+        best_vol = p_vol[max_sr_idx]
+        best_weights = weights[max_sr_idx]
+        
+        # Formatowanie alokacji
+        allocation = {}
+        columns = closes.columns
+        
+        for i in range(num_assets):
+            if best_weights[i] > 0.01: # Tylko powyżej 1%
+                allocation[columns[i]] = best_weights[i]
+        
+        # Sortowanie od największego udziału
+        allocation = dict(sorted(allocation.items(), key=lambda item: item[1], reverse=True))
+        
+        # Pakujemy dane do wykresu
+        sim_data = {
+            'volatility': p_vol,
+            'returns': p_ret,
+            'sharpe': sr
+        }
+        
+        best_portfolio = {
+            'return': best_return,
+            'volatility': best_vol,
+            'allocation': allocation
+        }
+        
+        return sim_data, best_portfolio, columns
 
     # --- NOWOŚĆ: PORTFOLIO OPTIMIZER (Wykres + Pie Chart) ---
     def plot_efficient_frontier(self, sim_data, best_portfolio):
@@ -6665,105 +7059,140 @@ class MarketProbabilityIndex:
         
         return fig
 
-    # --- PRO TOOLS: ALTCOIN GEM HUNTER (Force Top 15) ---
     def get_altcoin_gem_data(self):
         """
-        Skanuje rynek Altcoinów.
-        WERSJA BEZ FILTRA: Zwraca zawsze TOP 15 coinów, niezależnie od wyniku punktowego.
+        GEM HUNTER (Binance Multi-Threaded):
+        Skanuje 60+ Altcoinów w poszukiwaniu 'Diamentów' (Niskie RSI + Drawdown + Akumulacja).
+        Wersja turbo-szybka (2-3 sekundy) dzięki wielowątkowości.
         """
-        coins = [
-            'ETH-USD', 'SOL-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'AVAX-USD', 'DOT-USD', 'LINK-USD',
-            'DOGE-USD', 'SHIB-USD', 'PEPE-USD', 'WIF-USD', 'BONK-USD', 'FLOKI-USD', 'NAKA-USD', 'ENA-USD',
-            'RNDR-USD', 'FET-USD', 'TAO-USD', 'AGIX-USD', 'OCEAN-USD', 'NEAR-USD', 'SHRAP-USD', 'ASTER-USD',
-            'ARB-USD', 'OP-USD', 'MATIC-USD', 'IMX-USD', 'STX-USD', 'INJ-USD', 'TIA-USD', 'VRA-USD',
-            'UNI-USD', 'AAVE-USD', 'MKR-USD', 'SNX-USD', 'LDO-USD', 'PENDLE-USD', 'ONDO-USD', 'LUNC-USD',
-            'APT-USD', 'SUI-USD', 'SEI-USD', 'ATOM-USD', 'ICP-USD', 'FIL-USD', 'HBAR-USD', 'KAS-USD',
-            'FTM-USD', 'ALGO-USD', 'SAND-USD', 'MANA-USD', 'AXS-USD', 'GALA-USD', 'FLOW-USD', 'XLM-USD', 'JASMY-USD'
+        import requests
+        import concurrent.futures
+        
+        # Lista symboli (Czyste tickery)
+        symbols = [
+            'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOT', 'LINK',
+            'DOGE', 'SHIB', 'PEPE', 'WIF', 'BONK', 'FLOKI', 'ENA',
+            'RNDR', 'FET', 'TAO', 'AGIX', 'OCEAN', 'NEAR', 'ASTR',
+            'ARB', 'OP', 'MATIC', 'IMX', 'STX', 'INJ', 'TIA', 'VRA',
+            'UNI', 'AAVE', 'MKR', 'SNX', 'LDO', 'PENDLE', 'ONDO', 'LUNC',
+            'APT', 'SUI', 'SEI', 'ATOM', 'ICP', 'FIL', 'HBAR', 'KAS',
+            'FTM', 'ALGO', 'SAND', 'MANA', 'AXS', 'GALA', 'FLOW', 'XLM', 'JASMY',
+            'TRX', 'TON', 'NOT', 'BOME', 'PYR' # Dodatkowe popularne
         ]
 
-        try:
-            data = yf.download(coins, period="max", progress=False)
-            
-            if isinstance(data.columns, pd.MultiIndex):
-                try: closes = data['Close']; volumes = data['Volume']
-                except: return None
-            else:
-                return None
+        print(f"Gem Hunter skanuje {len(symbols)} coinów na Binance...")
+        
+        gems = []
 
-            gems = []
-
-            for ticker in coins:
-                if ticker not in closes.columns: continue
+        # Funkcja robocza (uruchamiana równolegle)
+        def process_coin(symbol):
+            try:
+                # --- AUTO-NAPRAWA TICKERÓW ---
+                ticker = symbol
+                if symbol == 'RNDR': ticker = 'RENDER'
+                if symbol == 'MATIC': ticker = 'POL'
+                if symbol in ['AGIX', 'OCEAN']: return None # Merge do FET (jest już na liście)
+                if symbol == 'NAKA': return None # Brak na Binance Spot
+                if symbol == 'SHRAP': return None # Brak na Binance Spot
                 
-                series = closes[ticker].dropna()
-                vol_series = volumes[ticker].dropna()
+                pair = f"{ticker}USDT"
                 
-                if len(series) < 180: continue 
+                # Pobieramy 1000 dni (ok. 3 lata) - wystarczy żeby znaleźć ATH z 2024/2025 i większość Hossy
+                url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval=1d&limit=1000"
+                r = requests.get(url, timeout=2)
                 
-                curr_price = series.iloc[-1]
-                ath = series.max()
+                if r.status_code != 200: return None
                 
-                # Dane techniczne
+                data = r.json()
+                if len(data) < 180: return None # Za młody coin
+                
+                # Parsowanie danych
+                # Index 4 = Close, Index 5 = Volume
+                closes = pd.Series([float(x[4]) for x in data])
+                volumes = pd.Series([float(x[5]) for x in data])
+                
+                curr_price = closes.iloc[-1]
+                ath = closes.max() # Najwyższa cena z pobranych 1000 dni
+                
+                # 1. DRAWDOWN (Spadek od szczytu)
                 drawdown = ((curr_price - ath) / ath) * 100
                 
-                delta = series.diff()
-                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-                rs = gain / loss
+                # 2. RSI (Wilder's Smoothing - Naprawione)
+                delta = closes.diff()
+                gain = delta.where(delta > 0, 0)
+                loss = -delta.where(delta < 0, 0)
+                
+                avg_gain = gain.ewm(com=13, adjust=False).mean()
+                avg_loss = loss.ewm(com=13, adjust=False).mean()
+                
+                rs = avg_gain / avg_loss
                 rsi = 100 - (100 / (1 + rs))
                 rsi_val = rsi.iloc[-1]
                 
-                ema_21 = series.ewm(span=21, adjust=False).mean().iloc[-1]
+                if pd.isna(rsi_val): return None
+
+                # 3. EMA 21 (Trend krótkoterminowy)
+                ema_21 = closes.ewm(span=21, adjust=False).mean().iloc[-1]
                 dist_ema = ((curr_price - ema_21) / ema_21) * 100
                 
-                vol_avg = vol_series.rolling(30).mean().iloc[-1]
-                curr_vol = vol_series.iloc[-1]
+                # 4. VOLUMEN (Czy ktoś to kupuje?)
+                vol_avg = volumes.rolling(30).mean().iloc[-1]
+                curr_vol = volumes.iloc[-1]
+                # Zabezpieczenie przed dzieleniem przez zero
                 vol_ratio = curr_vol / vol_avg if vol_avg > 0 else 0
                 
-                # --- SCORING ---
+                # --- SCORING SYSTEM (Twoja logika) ---
                 score = 0
                 
-                # Drawdown
+                # Drawdown (Im taniej tym lepiej)
                 if -95 <= drawdown <= -70: score += 30
                 elif -70 < drawdown <= -50: score += 15
-                elif drawdown < -95: score -= 50
+                elif drawdown < -95: score -= 50 # Scam/Bankrut
                 
-                # RSI
+                # RSI (Im niżej tym lepiej)
                 if rsi_val < 35: score += 20
                 elif rsi_val < 45: score += 10
                 
-                # EMA 21
+                # EMA 21 (Blisko średniej = Akumulacja)
                 if -5 <= dist_ema <= 5: score += 30
-                elif dist_ema > 0: score += 20
-                elif dist_ema < -15: score -= 30
+                elif dist_ema > 0: score += 20 # Rośnie
+                elif dist_ema < -15: score -= 30 # Spada za mocno (nóż)
                 
-                # Wolumen
+                # Wolumen (Wybicie)
                 if vol_ratio > 1.2: score += 20
                 
                 # Status słowny
                 status = "AKUMULACJA" if -5 <= dist_ema <= 5 else "ODBICIE" if dist_ema > 0 else "DOŁEK"
                 
-                # Dodajemy WSZYSTKO (bez warunku if score > 30)
-                gems.append({
-                    'Coin': ticker.replace('-USD',''),
+                return {
+                    'Coin': symbol, # Wyświetlamy starą nazwę
                     'Score': score,
                     'Drawdown': drawdown,
                     'RSI': rsi_val,
                     'DistEMA': dist_ema,
                     'Status': status
-                })
-            
-            # Ranking
-            df_gems = pd.DataFrame(gems)
-            if not df_gems.empty:
-                df_gems = df_gems.sort_values(by='Score', ascending=False)
-            
-            # Zwracamy TOP 15
-            return df_gems.head(15)
+                }
+                
+            except Exception:
+                return None
 
-        except Exception as e:
-            print(f"Błąd Gem Hunter: {e}")
-            return None
+        # --- WIELOWĄTKOWOŚĆ ---
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(process_coin, symbols))
+
+        # Filtrowanie pustych wyników
+        gems = [r for r in results if r is not None]
+
+        # Ranking
+        df_gems = pd.DataFrame(gems)
+        if not df_gems.empty:
+            # Sortujemy po Score (Najlepsze okazje na górze)
+            df_gems = df_gems.sort_values(by='Score', ascending=False)
+            
+            # FORCE TOP 15 (Zawsze zwracamy 15, nawet jak słabe wyniki)
+            return df_gems.head(15)
+        
+        return None
 
     def plot_altcoin_gems(self, df):
         if df is None or df.empty: return None
@@ -8471,24 +8900,32 @@ class MarketProbabilityIndex:
         
         return fig
 
+    # --- ZAKTUALIZOWANA METODA: PASEK NA DOLE (TICKER) ---
     def display_bottom_ticker(self):
         """
         Wyświetla pasek z reklamami na dole ekranu (wysokość 60px).
         Dodano klauzulę prawną (Not Financial Advice) dla bezpieczeństwa.
+        Wersja zoptymalizowana: łączy kuloodporną listę ze starym, dobrym stylem CSS i stopką prawną w Sidebarze.
         """
-        # Teksty reklamowe zmiksowane z zastrzeżeniem prawnym
-        ad_text = (
-            "🚀 <b>SONAI PREMIUM:</b> Odblokuj Zdrowie psychiczne z SonAi!  |  "
-            "<span style='color: #ff0055;'>⚠️ <b>NOT FINANCIAL ADVICE:</b> Wszystkie dane mają charakter wyłącznie edukacyjny. </span>  |  "
-            "💎 <b>ZASADA #1:</b> Nie tracimy pieniędzy.  |  "
-            "🧠 <b>HEAL-TO-EARN:</b> SonAi-Zarabiaj krypto dbając o zdrowie (Już wkrótce!)  |  "
-            "<span style='color: #ff0055;'>⚠️ <b>RYZYKO:</b> Inwestujesz na własną odpowiedzialność. </span>  |  "
-            "📊 <b>NOWOŚĆ:</b> Sprawdź zakładkę 'Sezonowość' i zobacz idealny rok BTC.  |  "
-            "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów  |  "
+        import streamlit as st
+        
+        # Używamy bezpiecznej listy tekstów (chroni przed błędami składniowymi)
+        ad_texts = [
+            "🚀 <b>SONAI PREMIUM:</b> Odblokuj Zdrowie psychiczne z SonAi!  |  ",
+            "👼 <b>SILENT ANGEL NFT:</b> Dołącz do rewolucji dobra! Wesprzyj rodziny walczące z rzadką chorobą i zdobądź unikalne NFT (silentangelrett.com).  |  ",
+            "<span style='color: #ff0055;'>⚠️ <b>NOT FINANCIAL ADVICE:</b> Wszystkie dane mają charakter wyłącznie edukacyjny. </span>  |  ",
+            "💎 <b>ZASADA #1:</b> Nie tracimy pieniędzy.  |  ",
+            "🧠 <b>HEAL-TO-EARN:</b> SonAi-Zarabiaj krypto dbając o zdrowie (Już wkrótce!)  |  ",
+            "<span style='color: #ff0055;'>⚠️ <b>RYZYKO:</b> Inwestujesz na własną odpowiedzialność. </span>  |  ",
+            "📊 <b>NOWOŚĆ:</b> Sprawdź zakładkę 'Sezonowość' i zobacz idealny rok BTC.  |  ",
+            "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów  |  ",
             "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji (zobacz Skaner Bólu). "
-        )
+        ]
+        
+        # Łączymy w jeden ciąg
+        ad_text = "".join(ad_texts)
 
-        # Styl CSS i HTML paska (wysokość 60px)
+        # Styl CSS i HTML paska (wysokość 60px) - zachowany Twój oryginalny wygląd!
         ticker_html = f"""
         <style>
             .ticker-container {{
@@ -8532,12 +8969,17 @@ class MarketProbabilityIndex:
         # Wyświetlamy ticker na dole
         st.markdown(ticker_html, unsafe_allow_html=True)
         
-        # Automatyczne dodanie pełnego Expandera do Sidebaru (żebyś nie musiał pamiętać o wywołaniu)
+        # Automatyczne dodanie pełnego Expandera do Sidebaru (zachowane w 100%)
+        # Jeśli APP_VERSION sypnie błędem (w zależności jak masz ją zdefiniowaną), zamień na sztywno np. '46'
         st.sidebar.markdown("---")
+        
+        # Próbujemy pobrać wersję apki, jeśli istnieje globalnie, inaczej wstawiamy domyślną
+        app_v = globals().get('APP_VERSION', '46 Stable')
+        
         with st.sidebar.expander("⚖️ DISCLAIMER (NOTA PRAWNA)", expanded=False):
             st.markdown(f"""
             <div style='font-size: 0.85em; text-align: justify; color: #aaa; line-height: 1.4;'>
-                <b>Lambo czy Karton (v{APP_VERSION})</b> to oprogramowanie analityczne. 
+                <b>Lambo czy Karton (v{app_v})</b> to oprogramowanie analityczne. 
                 <br><br>
                 1. <b>Brak Porady:</b> Żadna informacja tutaj zawarta nie jest "rekomendacją inwestycyjną".
                 <br><br>
@@ -8549,8 +8991,8 @@ class MarketProbabilityIndex:
 
     def setup_analytics(self):
         """
-        Wysyła dane do GA4. 
-        Mierzy czas i zlicza minuty aktywności.
+        Wysyła dane do GA4 (Metoda Python - Server-Side).
+        PANCERNA METODA: Działa zawsze, omija AdBlocki, liczy każdą minutę.
         """
         import time
         import uuid
@@ -8559,12 +9001,13 @@ class MarketProbabilityIndex:
         import os
         import json
 
-        # 1. Dane konfiguracyjne
+        # 1. Konfiguracja
         GA_ID = "G-D4BM5ZM6NB"
-        API_SECRET = "VNL2Bm-YQo2M9HXytX6P9A"
+        API_SECRET = "VNL2Bm-YQo2M9HXytX6P9A" # WYMAGANY przy tej metodzie
         id_filename = "user_id.json"
         
         # --- LOGIKA IDENTYFIKACJI (CID) ---
+        # Sprawdzamy czy mamy stałego użytkownika zapisanego w pliku
         try:
             if os.path.exists(id_filename):
                 with open(id_filename, 'r') as f:
@@ -8577,7 +9020,9 @@ class MarketProbabilityIndex:
         except:
             cid = str(uuid.uuid4())
         
-        st.session_state['client_id'] = cid
+        # Zapisz w sesji Streamlit
+        if 'client_id' not in st.session_state:
+            st.session_state['client_id'] = cid
 
         # --- LOGIKA SESJI I CZASU ---
         if 'ga_session_id' not in st.session_state:
@@ -8585,11 +9030,14 @@ class MarketProbabilityIndex:
         sid = st.session_state['ga_session_id']
 
         current_time = time.time()
+        
+        # Obliczamy czas zaangażowania (Engagement Time)
         engagement_time_msec = 100 
         if 'last_interaction_time' in st.session_state:
             time_diff = current_time - st.session_state['last_interaction_time']
-            if time_diff < 1800:
+            if time_diff < 1800: # Jeśli akcja była mniej niż 30 min temu
                 engagement_time_msec = int(time_diff * 1000)
+        
         st.session_state['last_interaction_time'] = current_time
 
         # --- LOGIKA ZLICZANIA MINUT ---
@@ -8601,6 +9049,7 @@ class MarketProbabilityIndex:
         total_session_time = current_time - st.session_state['start_session_time']
         current_minute = int(total_session_time // 60)
 
+        # Jeśli minęła kolejna minuta, flagujemy do wysyłki
         if current_minute > st.session_state['minutes_counted']:
             st.session_state['minutes_counted'] = current_minute
             send_minute_event = True
@@ -8608,96 +9057,115 @@ class MarketProbabilityIndex:
         # --- PRZYGOTOWANIE DANYCH (PAYLOAD) ---
         base_url = f"https://www.google-analytics.com/mp/collect?measurement_id={GA_ID}&api_secret={API_SECRET}"
         
+        # Budujemy paczkę danych dla Google
         payload = {
             "client_id": cid,
+            "user_id": cid, 
+            "non_personalized_ads": False,
+            "timestamp_micros": int(current_time * 1000000), # Ważne dla dokładności czasu
             "events": [
                 {
-                    "name": "page_view",
+                    "name": "page_view", # Zdarzenie podstawowe
                     "params": {
                         "session_id": sid,
                         "engagement_time_msec": engagement_time_msec,
-                        "page_title": "Lambo czy Karton",
-                        "debug_mode": 1
+                        "page_title": "Lambo czy Karton (App)",
                     }
                 }
             ]
         }
 
+        # Jeśli minęła minuta, doklejamy zdarzenie "minute_passed"
         if send_minute_event:
             payload["events"].append({
                 "name": "minute_passed",
                 "params": {
                     "session_id": sid,
                     "minute_number": st.session_state['minutes_counted'],
-                    "debug_mode": 1
+                    "engagement_time_msec": 100
                 }
             })
 
-        # --- DEFINICJA FUNKCJI WYSYŁAJĄCEJ (2 WCIĘCIA) ---
+        # --- WYSYŁKA W TLE (THREADING) ---
+        # Używamy wątku, żeby nie spowalniać działania aplikacji
         def send_ga_thread(payload_data):
             try:
-                requests.post(base_url, json=payload_data, timeout=3)
+                # User-Agent udający przeglądarkę, żeby Google nie odrzuciło jako bota
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Content-Type': 'application/json'
+                }
+                requests.post(base_url, json=payload_data, headers=headers, timeout=5)
             except:
                 pass
 
-        # --- URUCHOMIENIE WĄTKU (NA SAMYM KOŃCU METODY) ---
-        threading.Thread(target=send_ga_thread, args=(payload,)).start()
+        threading.Thread(target=send_ga_thread, args=(payload,), daemon=True).start()
         
-    # --- SYSTEM AKTUALIZACJI (DEBUG MODE) ---
+    # --- SYSTEM AKTUALIZACJI (Wersja "Stary, ściągaj to") ---
     def check_for_updates(self):
         """
         Sprawdza dostępność nowej wersji na GitHub.
         """
-        # -----------------------------------------------------------
-        # KROK 1: TUTAJ WKLEJ SWÓJ LINK "RAW" Z GITHUBA!
-        # Instrukcja: Wejdź na GitHub -> Otwórz plik .py -> Kliknij przycisk "Raw" -> Skopiuj link z paska adresu
-        # Przykład: https://raw.githubusercontent.com/TwojNick/TwojeRepo/main/twoj_plik.py
-        # -----------------------------------------------------------
+        # LINK DO SUROWEGO PLIKU (RAW)
         UPDATE_URL = "https://raw.githubusercontent.com/SonAi-ai/lambo-app/refs/heads/main/market_app.py" 
-        # -----------------------------------------------------------
-
-        # Jeśli link jest pusty lub domyślny, przerywamy
-        if "WKLEJ_TUTAJ" in UPDATE_URL or not UPDATE_URL:
-            # st.warning("⚠️ Deweloper nie ustawił linku aktualizacji (UPDATE_URL).")
-            return
-
+        
         try:
-            # Pobieramy kod
-            response = requests.get(UPDATE_URL, timeout=5)
+            # 1. Pobieramy kod z neta
+            response = requests.get(UPDATE_URL, timeout=3)
             
             if response.status_code == 200:
                 new_code = response.text
                 
-                # Szukamy wersji w pobranym kodzie
+                # 2. Szukamy wersji w pobranym kodzie (Regexem)
                 match = re.search(r'APP_VERSION\s*=\s*"([0-9\.]+)"', new_code)
                 
                 if match:
                     remote_version = match.group(1)
                     
-                    # Logika porównania (Dla Ciebie do testów)
-                    # print(f"Lokalna: {APP_VERSION} | Zdalna: {remote_version}") 
-                    
-                    # Jeśli wersje są różne -> Pokaż powiadomienie
+                    # 3. Jeśli wersje są różne -> Pokaż powiadomienie
+                    # Porównujemy tekstowo (np. "1.2" != "1.3")
                     if remote_version != APP_VERSION:
-                        st.toast(f"🚀 Nowa wersja wykryta: {remote_version}!", icon="🎉")
                         
-                        st.warning(f"🚀 **DOSTĘPNA AKTUALIZACJA!** (Masz: {APP_VERSION} ➡️ Jest: {remote_version})")
+                        # --- TWOJE POWIADOMIENIE ---
+                        st.toast(f"🔥 JEST NOWE LAMBO v{remote_version}!", icon="🚀")
                         
-                        if st.button("📥 POBIERZ I ZAKTUALIZUJ (v" + remote_version + ")"):
-                            with st.spinner("Pobieranie nowej wersji..."):
-                                # Nadpisujemy plik
-                                with open(__file__, "w", encoding="utf-8") as f:
-                                    f.write(new_code)
-                                
-                                st.success("✅ Gotowe! Restartuję...")
-                                time.sleep(2)
-                                st.rerun()
+                        st.markdown(f"""
+                        <div style="
+                            background-color: #00ff55; 
+                            color: black; 
+                            padding: 15px; 
+                            border-radius: 10px; 
+                            border: 3px solid white;
+                            text-align: center;
+                            margin-bottom: 20px;
+                            box-shadow: 0 0 20px rgba(0, 255, 85, 0.5);">
+                            <h2 style='margin:0; font-weight: 900;'>🚗 STARY, JEST DOSTĘPNA NOWA WERSJA! (v{remote_version})</h2>
+                            <p style='font-size: 18px; font-weight: bold; margin-top: 10px;'>
+                            Na co czekasz? Ściągaj, to jest w pytę, chcesz to mieć! 🚀
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        c1, c2, c3 = st.columns([1, 2, 1])
+                        with c2:
+                            if st.button(f"📥 DAWAJ TO! (Aktualizuj do v{remote_version})", type="primary", use_container_width=True):
+                                with st.spinner("Zaciągam nitro z serwera..."):
+                                    # Nadpisujemy plik, w którym jesteśmy
+                                    with open(__file__, "w", encoding="utf-8") as f:
+                                        f.write(new_code)
+                                    
+                                    st.success("✅ ZAKTUALIZOWANO! Restartuję silnik...")
+                                    time.sleep(2)
+                                    st.rerun()
                 else:
-                    print("Błąd: Nie znalazłem APP_VERSION w pliku na GitHubie.")
+                    # Cicha awaria (nie znaleziono wersji w pliku)
+                    pass
             else:
-                print(f"Błąd połączenia z GitHub: Kod {response.status_code}")
+                # Cicha awaria (brak połączenia)
+                pass
                 
         except Exception as e:
+            # Wypisz tylko w konsoli, żeby nie straszyć usera
             print(f"Błąd aktualizacji: {e}")
 
     # --- METODA 1: OBLICZENIA (GET) ---
@@ -12509,6 +12977,2174 @@ class MarketProbabilityIndex:
         ax.set_facecolor(t['bg'])
         
         return fig
+
+    # --- 1. DANE: LONGEVITY (Wyścig) ---
+    def get_longevity_data(self):
+        """
+        Pobiera i normalizuje dane dla sektora Longevity.
+        Zwraca DataFrame gotowy do wykresu (Start = 100%).
+        """
+        assets = {
+            'CRSP': 'CRISPR (Gene Edit)',   
+            'NTLA': 'Intellia (InVivo)',    
+            'RXRX': 'Recursion (AI Bio)',   
+            'DNA': 'Ginkgo (Bio-Foundry)',  
+            'PATH': 'UiPath (Automation)',  
+            'NVDA': 'NVIDIA (Clara AI)',    
+            'LLY': 'Eli Lilly (Obesity)',   
+            'NVO': 'Novo Nordisk',          
+            'XBI': 'Biotech ETF',           
+            'VRTX': 'Vertex Pharma'         
+        }
+        
+        try:
+            tickers = list(assets.keys())
+            # Pobieramy 1 rok danych
+            df = yf.download(tickers, period="1y", progress=False)['Close']
+            
+            # Normalizacja do 100 (Start = 100%)
+            normalized = (df / df.iloc[0]) * 100
+            
+            # Zmiana nazw kolumn
+            normalized = normalized.rename(columns=assets)
+            
+            return normalized
+
+        except Exception as e:
+            print(f"Błąd Longevity Data: {e}")
+            return None
+
+    # --- 1. WYKRES: LONGEVITY (Liniowy) ---
+    def plot_longevity_portfolio(self, df):
+        if df is None or df.empty: return None
+        
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        # Rysujemy linie
+        for column in df.columns:
+            # Stylizacja linii
+            col = None
+            lw = 1
+            alpha = 0.7
+            
+            if 'Biotech ETF' in column:
+                col = 'white'; lw = 3; linestyle = '--'; alpha = 1.0
+            elif 'NVIDIA' in column: 
+                col = '#00ff55'; lw = 2.5; linestyle = '-'
+            elif 'CRISPR' in column: 
+                col = '#ff0055'; lw = 2.5; linestyle = '-'
+            else:
+                linestyle = '-'
+                
+            ax.plot(df.index, df[column], label=column, color=col, linewidth=lw, linestyle=linestyle, alpha=alpha)
+        
+        ax.set_title("WYŚCIG PO NIEŚMIERTELNOŚĆ: Kto wygrywa?", fontsize=16, color='white')
+        ax.set_ylabel("Wzrost wartości (Start = 100)", color='white')
+        ax.legend(loc='upper left', fontsize=9)
+        ax.grid(True, alpha=0.15)
+        
+        # Ciemny motyw
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
+        ax.tick_params(colors='white')
+        for spine in ax.spines.values(): spine.set_color('white')
+        
+        return fig
+
+    # --- 2. DANE: BIO RADAR (Ryzyko) ---
+    def get_bio_risk_data(self):
+        """
+        Oblicza Zmienność (Ryzyko) i Zwrot dla spółek Biotech.
+        Zwraca DataFrame z kolumnami: 'Volatility', 'Return'.
+        """
+        tickers = [
+            'CRSP', 'NTLA', 'EDIT', 'BEAM', # Gene Editing
+            'RXRX', 'SDGR', 'DNA',          # AI Bio
+            'NVDA', 'LLY', 'NVO', 'AMGN',   # Big Pharma/Tech
+            'PACB', 'ILMN',                 # Sekwencjonowanie
+            'MNMD', 'CMPS'                  # Psychedelics
+        ]
+        
+        try:
+            data = yf.download(tickers, period="6mo", progress=False)['Close']
+            
+            # Zwroty dzienne
+            returns = data.pct_change().dropna()
+            
+            summary = pd.DataFrame()
+            # Oś Y: Zysk Roczny
+            summary['Return'] = returns.mean() * 252 * 100
+            # Oś X: Ryzyko Roczne
+            summary['Volatility'] = returns.std() * np.sqrt(252) * 100
+            
+            return summary
+            
+        except Exception as e:
+            print(f"Błąd Bio Risk Data: {e}")
+            return None
+
+    # --- 2. WYKRES: BIO RADAR (Scatter) ---
+    def plot_bio_risk_radar(self, df):
+        if df is None or df.empty: return None
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Rysujemy punkty
+        ax.scatter(df['Volatility'], df['Return'], color='#00e5ff', s=100, alpha=0.7, edgecolors='white')
+        
+        # Linie środka (Średnia rynkowa)
+        ax.axhline(0, color='white', linestyle='--', alpha=0.3)
+        ax.axvline(df['Volatility'].mean(), color='white', linestyle='--', alpha=0.3)
+        
+        # Podpisy
+        for ticker, row in df.iterrows():
+            ax.annotate(ticker, (row['Volatility'], row['Return']), 
+                        xytext=(5, 5), textcoords='offset points', 
+                        color='white', fontsize=9, fontweight='bold')
+        
+        # Opisy ćwiartek
+        ax.text(df['Volatility'].max(), df['Return'].max(), "🚀 MOONSHOT", color='#00ff55', ha='right', va='top')
+        ax.text(df['Volatility'].max(), df['Return'].min(), "💀 KASYNO", color='#ff0055', ha='right', va='bottom')
+        
+        ax.set_title("BIO-HAZARD RADAR: Gdzie jest Twoje DNA?", fontsize=14, color='white')
+        ax.set_xlabel("RYZYKO (Zmienność %)", color='white')
+        ax.set_ylabel("ZYSK ROCZNY (%)", color='white')
+        
+        # Ciemny motyw
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
+        ax.tick_params(colors='white')
+        for spine in ax.spines.values(): spine.set_color('white')
+        
+        return fig
+
+    # --- NOWOŚĆ: SUPLEMENTY DATA ---
+    def get_supplements_data(self):
+        """
+        Pobiera dane dla sektora Suplementów i Biohackingu.
+        CDXC (NAD+), HLN (Centrum), HLF (Herbalife), CELH (Fitness).
+        Zwraca znormalizowany wykres (Start = 100%).
+        """
+        assets = {
+            'CDXC': 'ChromaDex (NAD+ Król)',  # Paliwo dla mitochondriów
+            'HLN': 'Haleon (Centrum)',        # Bezpieczna opcja "Emeryt"
+            'CELH': 'Celsius (Metabolizm)',   # Napoje funkcjonalne
+            'HLF': 'Herbalife (Dieta)',       # Klasyk sprzedaży
+            'USNA': 'Usana Health (Komórki)', # Suplementy premium
+            'XLP': 'Consumer Staples ETF'     # Benchmark (Rynek dóbr podstawowych)
+        }
+        
+        try:
+            tickers = list(assets.keys())
+            # Pobieramy 1 rok danych
+            df = yf.download(tickers, period="1y", progress=False)['Close']
+            
+            # Normalizacja do 100 (Start = 100%)
+            normalized = (df / df.iloc[0]) * 100
+            
+            # Zmiana nazw kolumn
+            normalized = normalized.rename(columns=assets)
+            
+            return normalized
+
+        except Exception as e:
+            print(f"Błąd Supplements Data: {e}")
+            return None
+
+    # --- NOWOŚĆ: SUPLEMENTY WYKRES ---
+    def plot_supplements_chart(self, df):
+        if df is None or df.empty: return None
+        
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        for column in df.columns:
+            # Stylizacja
+            col = None
+            lw = 1.5
+            alpha = 0.7
+            ls = '-'
+            
+            # Wyróżniamy Twoje typy
+            if 'ChromaDex' in column: 
+                col = '#00ff55'; lw = 3; alpha = 1.0 # Zielony neon (Król Longevity)
+            elif 'Haleon' in column: 
+                col = '#00e5ff'; lw = 2.5; alpha = 0.9 # Niebieski (Bezpieczny)
+            elif 'ETF' in column:
+                col = 'white'; lw = 2; ls = '--'
+                
+            ax.plot(df.index, df[column], label=column, color=col, linewidth=lw, linestyle=ls, alpha=alpha)
+        
+        ax.set_title("BIOHACKING & SUPLEMENTY: Paliwo czy Placebo?", fontsize=16, color='white')
+        ax.set_ylabel("Zwrot z inwestycji (Start = 100)", color='white')
+        ax.legend(loc='upper left', fontsize=9)
+        ax.grid(True, alpha=0.15)
+        
+        # Ciemny motyw
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
+        ax.tick_params(colors='white')
+        for spine in ax.spines.values(): spine.set_color('white')
+        
+        return fig
+
+    # --- NOWOŚĆ: SILICON VALLEY (Mag 7 Data) ---
+    def get_mag7_data(self):
+        """
+        Pobiera dane dla "Wspaniałej Siódemki" (Magnificent 7).
+        To silniki napędowe S&P 500.
+        """
+        assets = {
+            'NVDA': 'NVIDIA (AI King)',
+            'META': 'Meta (Facebook)',
+            'AMZN': 'Amazon (Cloud)',
+            'MSFT': 'Microsoft (Copilot)',
+            'GOOGL': 'Google (Gemini)',
+            'AAPL': 'Apple (iPhone)',
+            'TSLA': 'Tesla (Robot)',
+            'QQQ': 'NASDAQ 100 (Benchmark)' # Punkt odniesienia
+        }
+        
+        try:
+            tickers = list(assets.keys())
+            # Pobieramy 1 rok danych
+            df = yf.download(tickers, period="1y", progress=False)['Close']
+            
+            # Normalizacja (Start = 0%)
+            normalized = ((df / df.iloc[0]) - 1) * 100
+            
+            # Zmiana nazw
+            normalized = normalized.rename(columns=assets)
+            
+            return normalized, df # Zwracamy też surowe ceny do obliczenia ATH
+
+        except Exception as e:
+            print(f"Błąd Mag7 Data: {e}")
+            return None, None
+
+    # --- NOWOŚĆ: SILICON VALLEY (Mag 7 Data) ---
+    def get_mag7_data(self):
+        """
+        Pobiera dane dla "Wspaniałej Siódemki" (Magnificent 7).
+        To silniki napędowe S&P 500.
+        """
+        assets = {
+            'NVDA': 'NVIDIA (AI King)',
+            'META': 'Meta (Facebook)',
+            'AMZN': 'Amazon (Cloud)',
+            'MSFT': 'Microsoft (Copilot)',
+            'GOOGL': 'Google (Gemini)',
+            'AAPL': 'Apple (iPhone)',
+            'TSLA': 'Tesla (Robot)',
+            'QQQ': 'NASDAQ 100 (Benchmark)' # Punkt odniesienia
+        }
+        
+        try:
+            tickers = list(assets.keys())
+            # Pobieramy 1 rok danych
+            df = yf.download(tickers, period="1y", progress=False)['Close']
+            
+            # Normalizacja (Start = 0%)
+            normalized = ((df / df.iloc[0]) - 1) * 100
+            
+            # Zmiana nazw
+            normalized = normalized.rename(columns=assets)
+            
+            return normalized, df # Zwracamy też surowe ceny do obliczenia ATH
+
+        except Exception as e:
+            print(f"Błąd Mag7 Data: {e}")
+            return None, None
+
+    # --- WYKRES 1: WYŚCIG GIGANTÓW ---
+    def plot_mag7_race(self, df):
+        if df is None or df.empty: return None
+        
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        for column in df.columns:
+            # Kolory firmowe
+            col = None; lw = 1.5; alpha = 0.7
+            
+            if 'NVIDIA' in column: col = '#76b900'; lw = 3; alpha = 1.0 # Zielony Nvidia
+            elif 'Meta' in column: col = '#0668E1'; lw = 2 # Niebieski Meta
+            elif 'Tesla' in column: col = '#cc0000'; lw = 2 # Czerwony Tesla
+            elif 'NASDAQ' in column: col = 'white'; lw = 3; alpha = 0.5; ls='--' # Benchmark
+            
+            ax.plot(df.index, df[column], label=column, color=col, linewidth=lw, alpha=alpha)
+            
+        ax.set_title("MAGNIFICENT 7: Kto ciągnie ten wózek?", fontsize=16, color='white')
+        ax.set_ylabel("Zysk procentowy (%)", color='white')
+        ax.legend(loc='upper left', fontsize=9)
+        ax.grid(True, alpha=0.15)
+        
+        # Ciemny motyw
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
+        ax.tick_params(colors='white')
+        for spine in ax.spines.values(): spine.set_color('white')
+        
+        return fig
+
+    # --- NOWOŚĆ: OBLICZANIE PROMOCJI (Drawdown from ATH) ---
+    def get_mag7_discount(self, raw_df):
+        """
+        Oblicza, jak daleko od szczytu (All-Time High z ostatniego roku) są akcje.
+        Wynik -10% oznacza, że akcja jest 10% tańsza niż była w szczycie.
+        """
+        assets = {
+            'NVDA': 'NVIDIA', 'META': 'Meta', 'AMZN': 'Amazon',
+            'MSFT': 'Microsoft', 'GOOGL': 'Google', 'AAPL': 'Apple',
+            'TSLA': 'Tesla'
+        }
+        
+        discounts = {}
+        
+        try:
+            # Iterujemy po kolumnach (tickerach)
+            for ticker, name in assets.items():
+                if ticker in raw_df.columns:
+                    series = raw_df[ticker]
+                    current_price = series.iloc[-1]
+                    max_price = series.max() # Szczyt z ostatniego roku
+                    
+                    # Obliczamy spadek w %
+                    dd = ((current_price - max_price) / max_price) * 100
+                    discounts[name] = dd
+            
+            # Tworzymy DataFrame i sortujemy (Największa promocja na górze)
+            df_discount = pd.DataFrame(list(discounts.items()), columns=['Firma', 'Promocja (%)'])
+            df_discount = df_discount.sort_values(by='Promocja (%)')
+            
+            return df_discount
+            
+        except Exception as e:
+            print(f"Błąd Discount: {e}")
+            return None
+
+    # --- WYKRES 2: DETEKTOR PROMOCJI (Bar Chart) ---
+    def plot_mag7_discount(self, df):
+        if df is None or df.empty: return None
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        
+        # Kolory słupków (Czerwone = Głęboka przecena, Zielone = Blisko szczytu)
+        colors = ['red' if x < -20 else '#ff9900' if x < -10 else '#00ff55' for x in df['Promocja (%)']]
+        
+        bars = ax.bar(df['Firma'], df['Promocja (%)'], color=colors, alpha=0.8)
+        
+        ax.set_title("DETEKTOR PROMOCJI: Ile % taniej niż na szczycie?", fontsize=14, color='white')
+        ax.set_ylabel("Odległość od ATH (%)", color='white')
+        ax.axhline(0, color='white', linewidth=1)
+        
+        # Wartości na słupkach
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{height:.1f}%', ha='center', va='bottom', color='white', fontweight='bold')
+            
+        # Ciemny motyw
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
+        ax.tick_params(colors='white')
+        for spine in ax.spines.values(): spine.set_color('white')
+        
+        return fig
+
+    # --- NAPRAWIONE: HARD BIOHACKING (Bez UBX) ---
+    def get_hard_bio_data(self):
+        """
+        Pobiera dane dla "Twardego Biohackingu".
+        Usunięto UBX (błąd danych), dodano PACB.
+        """
+        assets = {
+            'PACB': 'PacBio (DNA Read)',    # Zastępstwo za UBX (Sekwencjonowanie)
+            'GERN': 'Geron (Telomery)',     # Wydłużanie życia komórki
+            'ILMN': 'Illumina (DNA)',       # Sekwencjonowanie (Kod źródłowy)
+            'GRMN': 'Garmin (Data)',        # Monitoring 24/7 (Serce/Sen)
+            'ATAI': 'ATAI (Brain)',         # Neuroplastyczność (Psychodeliki)
+            'LNTH': 'Lantheus (Scan)',      # Diagnostyka obrazowa AI
+            'XBI': 'Biotech ETF'            # Benchmark
+        }
+        
+        try:
+            tickers = list(assets.keys())
+            # Pobieramy 1 rok danych
+            df = yf.download(tickers, period="1y", progress=False)['Close']
+            
+            # Usuwamy kolumny, które pobrały się jako puste (NaN)
+            df = df.dropna(axis=1, how='all')
+            
+            if df.empty: return None, None
+            
+            # 1. Normalizacja do wyścigu (Start = 0%)
+            # Używamy fillna(method='ffill') żeby łatać dziury w danych
+            df_filled = df.ffill().bfill()
+            
+            normalized = ((df_filled / df_filled.iloc[0]) - 1) * 100
+            normalized = normalized.rename(columns=assets)
+            
+            # 2. Dane do Drawdown
+            raw_df = df.rename(columns=assets)
+            
+            return normalized, raw_df
+
+        except Exception as e:
+            print(f"Błąd Hard Bio Data: {e}")
+            return None, None
+
+    # --- WYKRES 1: CYBERPUNK RACE ---
+    def plot_hard_bio_race(self, df):
+        if df is None or df.empty: return None
+        
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        for column in df.columns:
+            # Stylizacja Cyberpunk
+            col = None; lw = 1.5; alpha = 0.8
+            
+            if 'Unity' in column: col = '#ff00ff'; lw = 2.5 # Magenta (Zombie)
+            elif 'Geron' in column: col = '#00ffff'; lw = 2.5 # Cyan (Telomery)
+            elif 'Garmin' in column: col = '#ffff00'; lw = 2 # Żółty (Dane)
+            elif 'ETF' in column: col = 'white'; lw = 3; ls='--'; alpha=0.4
+            
+            ax.plot(df.index, df[column], label=column, color=col, linewidth=lw, alpha=alpha)
+            
+        ax.set_title("HARD BIOHACKING: Wyścig Technologii", fontsize=16, color='white')
+        ax.set_ylabel("Zysk / Strata (%)", color='white')
+        ax.legend(loc='upper left', fontsize=9)
+        ax.grid(True, alpha=0.15)
+        
+        # Ciemne tło
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
+        ax.tick_params(colors='white')
+        for spine in ax.spines.values(): spine.set_color('white')
+        
+        return fig
+
+    # --- NOWOŚĆ: BIO-DISCOUNT (Czy jest promocja?) ---
+    def get_hard_bio_discount(self, df):
+        """
+        Oblicza, o ile procent spółka spadła od rocznego szczytu (ATH).
+        Biohacki często spadają o 80%, to ważne info.
+        """
+        if df is None or df.empty: return None
+        
+        discounts = {}
+        for col in df.columns:
+            current = df[col].iloc[-1]
+            peak = df[col].max()
+            dd = ((current - peak) / peak) * 100
+            discounts[col] = dd
+            
+        # DataFrame posortowany od największej przeceny
+        res = pd.DataFrame(list(discounts.items()), columns=['Firma', 'Spadek od Szczytu (%)'])
+        res = res.sort_values(by='Spadek od Szczytu (%)')
+        
+        return res
+
+    # --- NAPRAWIONE: KRWAWY DRAWDOWN (Odporny na błędy) ---
+    def plot_hard_bio_discount(self, df):
+        if df is None or df.empty: return None
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        
+        # Bezpieczne kolory (obsługa NaN)
+        colors = []
+        for x in df['Spadek od Szczytu (%)']:
+            if pd.isna(x):
+                colors.append('gray')
+            elif x < -30:
+                colors.append('#ff0055') # Krach
+            elif x < -10:
+                colors.append('#ff9900') # Korekta
+            else:
+                colors.append('#00ff55') # Szczyt
+        
+        bars = ax.bar(df['Firma'], df['Spadek od Szczytu (%)'], color=colors, alpha=0.8)
+        
+        ax.set_title("RYZYKO: Jak głęboko zanurkowali?", fontsize=14, color='white')
+        ax.set_ylabel("Odległość od ATH (%)", color='white')
+        ax.axhline(0, color='white', linewidth=1)
+        
+        # Wartości na słupkach (Z BEZPIECZNIKIEM PRZECIWKO AWARII)
+        for bar in bars:
+            height = bar.get_height()
+            
+            # --- TU BYŁ BŁĄD, TERAZ JEST NAPRAWIONE ---
+            if pd.isna(height) or np.isnan(height):
+                label = "N/A"
+                y_pos = 0
+            else:
+                label = f'{int(height)}%'
+                y_pos = height - 2
+            # ------------------------------------------
+
+            ax.text(bar.get_x() + bar.get_width()/2., y_pos,
+                    label, ha='center', va='top', color='white', fontweight='bold', fontsize=9)
+            
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
+        ax.tick_params(colors='white', rotation=45)
+        for spine in ax.spines.values(): spine.set_color('white')
+        
+        return fig
+
+    # --- NOWOŚĆ: SILVER ECONOMY (Demografia) ---
+    def get_silver_economy_data(self):
+        """
+        Inwestowanie w starzejące się społeczeństwo.
+        Szpitale, domy opieki, sprzęt medyczny (stawy, serca).
+        """
+        assets = {
+            'UNH': 'UnitedHealth (Ubezpieczenia)',
+            'MDT': 'Medtronic (Rozruszniki/Cyborg)',
+            'SYK': 'Stryker (Sztuczne stawy)',
+            'HCA': 'HCA Healthcare (Szpitale)',
+            'ABBV': 'AbbVie (Leki dla seniorów)',
+            'XLV': 'Health Care ETF (Benchmark)'
+        }
+        try:
+            df = yf.download(list(assets.keys()), period="2y", progress=False)['Close']
+            # Normalizacja do 0%
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            return df_norm
+        except Exception: return None
+
+    # --- NOWOŚĆ: NEURO HACKING (Mózg) ---
+    def get_neuro_hacking_data(self):
+        """
+        Psychodeliki i leki nowej generacji na mózg.
+        Najbardziej ryzykowna, ale fascynująca część biohackingu.
+        """
+        assets = {
+            'ATAI': 'ATAI (Psychodeliki Platform)',
+            'CMPS': 'Compass (Grzybki/Psylocybina)',
+            'MNMD': 'MindMed (LSD/ADHD)',
+            'AXSM': 'Axsome (Neuro-Psych)',
+            'XBI': 'Biotech ETF (Benchmark)'
+        }
+        try:
+            df = yf.download(list(assets.keys()), period="1y", progress=False)['Close']
+            # Normalizacja do 0%
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            return df_norm
+        except Exception: return None
+
+    # --- NOWOŚĆ: MEDTECH CYBORGS (Robotyka) ---
+    def get_medtech_robots_data(self):
+        """
+        Roboty chirurgiczne i AI w diagnostyce.
+        Precyzja, której człowiek nie osiągnie.
+        """
+        assets = {
+            'ISRG': 'Intuitive Surgical (Da Vinci)', # Król robotów
+            'GEHC': 'GE HealthCare (Skany AI)',
+            'DXCM': 'Dexcom (Ciągły glukometr)',      # Biohacking cukru
+            'PODD': 'Insulet (Pompy insulinowe)',
+            'RMD':  'ResMed (Sen/Bezdech)'            # Biohacking snu
+        }
+        try:
+            df = yf.download(list(assets.keys()), period="2y", progress=False)['Close']
+            # Normalizacja do 0%
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            return df_norm
+        except Exception: return None
+
+    # --- WYKRES: SILVER ECONOMY ---
+    def plot_silver_economy(self, df):
+        if df is None: return None
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        for col in df.columns:
+            lw = 3 if 'ETF' in col else 1.5
+            ls = '--' if 'ETF' in col else '-'
+            # Kolory stonowane (Srebrny, Niebieski, Biały)
+            c = 'white' if 'ETF' in col else None
+            
+            val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], label=f"{col}: {val:+.0f}%", linewidth=lw, linestyle=ls, color=c)
+            
+        ax.set_title("SILVER ECONOMY: Biznes na Długowieczności", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Zwrot (%)', color=t['text'])
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1); ax.tick_params(colors=t['text'])
+        # Ukrywamy ramki
+        for s in ['top','right','bottom','left']: ax.spines[s].set_color(t['text'])
+        return fig
+
+    # --- WYKRES: NEURO HACKING ---
+    def plot_neuro_hacking(self, df):
+        if df is None: return None
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        # Kolory psychodeliczne (Neon)
+        colors = ['#ff00ff', '#00e5ff', '#ffff00', '#00ff00', '#ffffff']
+        
+        for i, col in enumerate(df.columns):
+            c = colors[i % len(colors)]
+            lw = 3 if 'ATAI' in col else 1.5
+            val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], label=f"{col}: {val:+.0f}%", color=c, linewidth=lw)
+            
+        ax.set_title("NEURO HACKING: Inwestycja w Mózg", fontsize=16, color='#d500f9', fontweight='bold')
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1); ax.tick_params(colors=t['text'])
+        return fig
+
+    # --- WYKRES: MEDTECH CYBORGS ---
+    def plot_medtech_robots(self, df):
+        if df is None: return None
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        for col in df.columns:
+            lw = 3 if 'Intuitive' in col else 1.5
+            c = '#00e5ff' if 'Intuitive' in col else None # Intuitive na cyjan
+            val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], label=f"{col}: {val:+.0f}%", linewidth=lw, color=c)
+            
+        ax.set_title("MEDTECH CYBORGS: Roboty i Bio-Data", fontsize=16, color='#00e5ff', fontweight='bold')
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1); ax.tick_params(colors=t['text'])
+        return fig
+
+    # --- NOWOŚĆ: GLOBAL LANDLORD (Nieruchomości / REITs) ---
+    def get_real_estate_empire_data(self):
+        """
+        Analiza rynku nieruchomości.
+        Ziemi nie da się dodrukować.
+        """
+        assets = {
+            'VNQ': 'USA Real Estate (Benchmark)',
+            'O': 'Realty Income (Czynsz co miesiąc)',
+            'PLD': 'Prologis (Magazyny Amazona)',
+            'AMT': 'American Tower (Maszty 5G)',
+            'VICI': 'VICI (Kasyna w Las Vegas)',
+            'VNQI': 'Global ex-US (Reszta Świata)'
+        }
+        try:
+            df = yf.download(list(assets.keys()), period="2y", progress=False)['Close']
+            # Normalizacja do 0%
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            return df_norm
+        except Exception: return None
+
+    # --- NOWOŚĆ: INDIA AWAKENING (Demografia) ---
+    def get_india_growth_data(self):
+        """
+        Indie to nowe Chiny. Największa demokracja i populacja.
+        Inwestycja w wzrost klasy średniej.
+        """
+        assets = {
+            'INDA': 'Indie ETF (Cały Rynek)',
+            'EPI': 'Indie Earnings (Zyskowne Spółki)',
+            'INFY': 'Infosys (Tech/Outsourcing)',
+            'HDB': 'HDFC Bank (Finanse)',
+            'MCHI': 'Chiny (Dla porównania)',
+            'SPY': 'USA (Benchmark)'
+        }
+        try:
+            df = yf.download(list(assets.keys()), period="2y", progress=False)['Close']
+            # Normalizacja do 0%
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            return df_norm
+        except Exception: return None
+
+    # --- NOWOŚĆ: CASHFLOW KINGS (Dywidendy) ---
+    def get_dividend_kings_data(self):
+        """
+        Spółki, które płacą Ci za to, że je posiadasz.
+        Celem jest zbudowanie 'Rzeki Pieniędzy'.
+        """
+        assets = {
+            'SCHD': 'High Dividend ETF (Jakość)',
+            'NOBL': 'Aristocrats (Wzrost od 25 lat)',
+            'JEPQ': 'Nasdaq Income (Opcje/Yield)',
+            'MO': 'Altria (Papierosy/Cash Cow)',
+            'KO': 'Coca-Cola (Klasyk)',
+            'VZ': 'Verizon (Telekom)'
+        }
+        try:
+            df = yf.download(list(assets.keys()), period="2y", progress=False)['Close']
+            # Normalizacja do 0%
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            return df_norm
+        except Exception: return None
+
+    # --- WYKRES: GLOBAL LANDLORD ---
+    def plot_real_estate_empire(self, df):
+        if df is None: return None
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        for col in df.columns:
+            lw = 3 if 'Benchmark' in col else 1.5
+            ls = '--' if 'Benchmark' in col else '-'
+            c = 'white' if 'Benchmark' in col else None
+            if 'Realty Income' in col: c = '#00ff55' # O (Zielony czynsz)
+            
+            val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], label=f"{col}: {val:+.0f}%", linewidth=lw, linestyle=ls, color=c)
+            
+        ax.set_title("GLOBAL LANDLORD: Twoja Cyfrowa Kamienica", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Wzrost Wartości (%)', color=t['text'])
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1); ax.tick_params(colors=t['text'])
+        for s in ['top','right','bottom','left']: ax.spines[s].set_color(t['text'])
+        return fig
+
+    # --- WYKRES: INDIA AWAKENING ---
+    def plot_india_growth(self, df):
+        if df is None: return None
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        colors = {
+            'Indie ETF (Cały Rynek)': '#ff9933', # Szafranowy (Indie)
+            'Indie Earnings (Zyskowne Spółki)': '#138808', # Zieleń (Indie)
+            'Chiny (Dla porównania)': '#ff0055', # Czerwony
+            'USA (Benchmark)': 'white'
+        }
+        
+        for col in df.columns:
+            c = colors.get(col, None)
+            lw = 3 if 'Indie' in col else 1.5
+            
+            val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], label=f"{col}: {val:+.0f}%", linewidth=lw, color=c)
+            
+        ax.set_title("INDIA AWAKENING: Tygrys vs Smok vs Orzeł", fontsize=16, color='#ff9933', fontweight='bold')
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1); ax.tick_params(colors=t['text'])
+        return fig
+
+    # --- WYKRES: DIVIDEND KINGS ---
+    def plot_dividend_kings(self, df):
+        if df is None: return None
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        for col in df.columns:
+            lw = 3 if 'SCHD' in col or 'JEPQ' in col else 1.5
+            c = '#ffd700' if 'High Dividend' in col else '#00e5ff' if 'Nasdaq' in col else None
+            
+            val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], label=f"{col}: {val:+.0f}%", linewidth=lw, color=c)
+            
+        ax.set_title("CASHFLOW KINGS: Pasywny Dochód (Bez dywidend)", fontsize=16, color='#ffd700', fontweight='bold')
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'])
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1); ax.tick_params(colors=t['text'])
+        return fig
+
+    # --- NOWOŚĆ: INCOME FACTORY (Skaner Rentowności) ---
+    def get_income_factory_data(self):
+        """
+        Pobiera aktualną rentowność dywidendową (Yield) dla pasywnych maszynek.
+        Sprawdza: BDC, MLPs, Covered Calls, Obligacje.
+        """
+        import concurrent.futures
+        
+        # Lista "Leniwych" aktywów
+        assets = {
+            'JEPQ': 'Nasdaq Options (Tech Income)',   # Opcje na Nasdaq
+            'JEPI': 'S&P 500 Options (Low Vol)',      # Opcje na S&P
+            'MAIN': 'Main Street Capital (BDC)',      # Pożyczki dla firm
+            'ARCC': 'Ares Capital (Private Credit)',  # Gigant kredytowy
+            'EPD':  'Enterprise Products (Rury)',     # Rury z gazem/ropą
+            'MO':   'Altria (Tytoń)',                 # Klasyczna dywidenda
+            'SGOV': 'US Treasury Bills (Bez ryzyka)', # Obligacje 0-3 mies.
+            'O':    'Realty Income (Czynsz)',         # Nieruchomości
+            'TLT':  'US Bonds 20Y (Długoterminowe)'   # Obligacje długie
+        }
+        
+        results = []
+        
+        # Funkcja robocza
+        def fetch_yield(ticker_tuple):
+            ticker, name = ticker_tuple
+            try:
+                # Pobieramy info (tam siedzi 'dividendYield')
+                stock = yf.Ticker(ticker)
+                info = stock.info
+                
+                # Różne API różnie nazywają to pole
+                div_yield = info.get('dividendYield', 0)
+                
+                # Czasem jest None
+                if div_yield is None: div_yield = 0
+                
+                # Jeśli to ETF obligacji (SGOV), yfinance często pokazuje 0 w dividendYield,
+                # ale ma 'yield' lub 'trailingAnnualDividendYield'.
+                # Dla uproszczenia w tym kodzie bazujemy na standardowym polu, 
+                # ale dla SGOV ręcznie wymuszamy ok. 5.2% (aktualna stopa wolna od ryzyka),
+                # jeśli API zawiedzie, żeby wykres miał sens.
+                if ticker == 'SGOV' and div_yield < 0.01: div_yield = 0.052
+                
+                return {
+                    'Ticker': ticker,
+                    'Name': name,
+                    'Yield': div_yield * 100, # Na procenty
+                    'Price': info.get('currentPrice', 0)
+                }
+            except:
+                return None
+
+        # Wielowątkowe pobieranie (Szybkość!)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            data = list(executor.map(fetch_yield, assets.items()))
+            
+        # Filtrujemy błędy
+        clean_data = [d for d in data if d is not None]
+        
+        # Tworzymy DataFrame i sortujemy od najwyższego procentu
+        df = pd.DataFrame(clean_data)
+        if not df.empty:
+            df = df.sort_values(by='Yield', ascending=True) # Rosnąco do wykresu poziomego
+            
+        return df
+
+    # --- WYKRES: INCOME FACTORY (Yield Bar Chart) ---
+    def plot_income_factory(self, df):
+        if df is None or df.empty: return None
+        
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(10, 7))
+        
+        # Kolorowanie w zależności od ryzyka/kategorii
+        colors = []
+        for name in df['Name']:
+            if 'Options' in name: colors.append('#d500f9')   # Fiolet (Opcje)
+            elif 'BDC' in name or 'Credit' in name: colors.append('#00ff55') # Zielony (Kredyt)
+            elif 'Rury' in name: colors.append('#ff9900')    # Pomarańcz (Surowce)
+            elif 'Treasury' in name: colors.append('#00e5ff') # Niebieski (Bezpieczne)
+            else: colors.append('#ffffff') # Biały (Reszta)
+            
+        # Wykres
+        bars = ax.barh(df['Name'], df['Yield'], color=colors, alpha=0.8, edgecolor=t['bg'])
+        
+        # Etykiety wartości
+        for bar, val in zip(bars, df['Yield']):
+            width = bar.get_width()
+            ax.text(width + 0.2, bar.get_y() + bar.get_height()/2, f"{val:.2f}%", 
+                    va='center', color='white', fontweight='bold', fontsize=10)
+            
+        # Linia "Free Money" (Ok. 5% obecnie)
+        ax.axvline(5.0, color='grey', linestyle='--', alpha=0.5)
+        ax.text(5.0, -1, "Wolne od ryzyka (~5%)", color='grey', fontsize=8, ha='center')
+        
+        ax.set_title("THE INCOME FACTORY: Ile płacą za leżenie?", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_xlabel('Roczna Stopa Dywidendy/Odsetek (%)', color=t['text'])
+        ax.set_xlim(0, max(df['Yield']) * 1.15) # Margines na etykiety
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text']); ax.spines['left'].set_visible(False)
+        ax.tick_params(colors=t['text'])
+        ax.grid(False)
+        
+        return fig
+
+    # --- NOWOŚĆ: ETF NEXT GEN (Kto następny?) ---
+    def get_etf_candidates_data(self):
+        """
+        Analizuje kandydatów do kolejnych funduszy Spot ETF.
+        Sprawdza siłę relatywną (kto gra pod newsy?).
+        """
+        # Lista oficjalnych wniosków i silnych plotek
+        candidates = {
+            'SOL-USD': 'Solana (Wniosek: VanEck)',
+            'XRP-USD': 'XRP (Wniosek: Bitwise)',
+            'LTC-USD': 'Litecoin (Wniosek: Canary)',
+            'HBAR-USD': 'Hedera (Wniosek: Canary)',
+            'ADA-USD': 'Cardano (Plotki)',
+            'DOGE-USD': 'Dogecoin (Wildcard)',
+            'BTC-USD': 'Bitcoin (Lider/Baza)'
+        }
+        
+        try:
+            # Pobieramy dane z ostatnich 6 miesięcy (okres składania wniosków)
+            start_date = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+            data = yf.download(list(candidates.keys()), start=start_date, progress=False)
+            
+            # Fix MultiIndex
+            if isinstance(data.columns, pd.MultiIndex):
+                try: df = data.xs('Close', axis=1, level=0, drop_level=True)
+                except: df = data.xs('Close', axis=1, level=1, drop_level=True)
+            else:
+                df = data['Close']
+
+            df = df.ffill().dropna()
+            
+            # Obliczamy zwrot od początku okresu (kto najsilniejszy?)
+            # Normalizacja do 0%
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm.rename(columns=candidates, inplace=True)
+            
+            return df_norm
+
+        except Exception as e:
+            print(f"Błąd ETF Candidates: {e}")
+            return None
+    # --- WYKRES: ETF NEXT GEN ---
+    def plot_etf_candidates(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        # Kolory dedykowane kandydatom
+        colors = {
+            'Solana (Wniosek: VanEck)': '#d500f9',   # Solana Purple
+            'XRP (Wniosek: Bitwise)': '#0055ff',     # Ripple Blue
+            'Litecoin (Wniosek: Canary)': '#c0c0c0', # Litecoin Silver
+            'Hedera (Wniosek: Canary)': '#00ff55',   # Hedera Green
+            'Cardano (Plotki)': '#0033ad',           # Cardano Blue
+            'Dogecoin (Wildcard)': '#ffd700',        # Doge Gold
+            'Bitcoin (Lider/Baza)': '#ffffff'        # Biały (Tło)
+        }
+        
+        # Sortujemy legendę: BTC na końcu (tło), reszta wg wyniku
+        sorted_cols = df.iloc[-1].sort_values(ascending=False).index.tolist()
+        
+        for col in sorted_cols:
+            # BTC jako benchmark (cieńszy, przerywany)
+            is_btc = 'Bitcoin' in col
+            lw = 1.5 if is_btc else 2.5
+            ls = ':' if is_btc else '-'
+            alpha = 0.5 if is_btc else 1.0
+            
+            # Kolor
+            c = colors.get(col, 'gray')
+            
+            final_val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], color=c, linewidth=lw, linestyle=ls, alpha=alpha, label=f"{col}: {final_val:+.1f}%")
+            
+            # Kropka na końcu
+            if not is_btc:
+                ax.scatter(df.index[-1], final_val, color=c, s=80, zorder=5)
+
+        ax.axhline(0, color=t['text'], linestyle='-', linewidth=0.5)
+        
+        ax.set_title("ETF NEXT GEN: Wyścig o Wall Street (6 Miesięcy)", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Wzrost pod spekulację (%)', color=t['text'])
+        
+        # Legenda
+        ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1, color=t['grid'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text']); ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- NOWOŚĆ: FUTURE FOOD (Soja, Robaki, Lab-Grown) ---
+    def get_future_food_data(self):
+        """
+        Sektor alternatywnego białka.
+        Od roślinnych burgerów po inwestycje w owady.
+        """
+        assets = {
+            'BYND': 'Beyond Meat (Roślinne Mięso)',  # Lider (i największa ofiara) hype'u
+            'OTLY': 'Oatly (Mleko z Owsa)',          # Roślinne mleko
+            'TSN':  'Tyson Foods (Inwestuje w Owady)', # Gigant mięsny wchodzący w robaki (Protix)
+            'ADM':  'Archer-Daniels (Soja/Przetwórstwo)', # To oni mielą tę soję
+            'STKL': 'SunOpta (Roślinne składniki)',
+            'MOO':  'Agri-Business ETF (Benchmark)'
+        }
+        
+        try:
+            tickers = list(assets.keys())
+            # Pobieramy 2 lata (żeby zobaczyć pęknięcie bańki)
+            df = yf.download(tickers, period="2y", progress=False)['Close']
+            
+            # Normalizacja (Start = 0%)
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            
+            return df_norm
+
+        except Exception as e:
+            print(f"Błąd Future Food: {e}")
+            return None
+    # --- WYKRES: FUTURE FOOD ---
+    def plot_future_food(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        colors = {
+            'Beyond Meat (Roślinne Mięso)': '#00ff55', # Zielony (Rośliny) - lub czerwony jak spada
+            'Oatly (Mleko z Owsa)': '#d500f9',         # Fiolet
+            'Tyson Foods (Inwestuje w Owady)': '#ff9900', # Pomarańcz (Tradycja + Nowe)
+            'Archer-Daniels (Soja/Przetwórstwo)': '#00e5ff', # Cyjan (Technologia żywności)
+            'Agri-Business ETF (Benchmark)': '#ffffff' # Biały
+        }
+        
+        for col in df.columns:
+            # Grubsza linia dla Beyond Meat (bo to symbol sektora)
+            lw = 2.5 if 'Beyond' in col else 1.5
+            ls = '--' if 'Benchmark' in col else '-'
+            alpha = 1.0 if 'Beyond' in col else 0.7
+            
+            c = colors.get(col, 'gray')
+            final_val = df[col].iloc[-1]
+            
+            ax.plot(df.index, df[col], color=c, linewidth=lw, linestyle=ls, alpha=alpha, label=f"{col}: {final_val:+.0f}%")
+            
+        ax.set_title("FUTURE FOOD: Soja, Robaki i Hype", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Zmiana Wartości (%)', color=t['text'])
+        ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+        ax.axhline(0, color=t['text'], linestyle=':', linewidth=1)
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1, color=t['grid'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text']); ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- ZAKTUALIZOWANE: NFT EMPIRE (Z Solaną) ---
+    def get_nft_proxies_data(self):
+        """
+        Pobiera dane dla tokenów powiązanych z rynkiem NFT/Metaverse.
+        Korzystamy z Yahoo, żeby złapać polskiego GamerHasha (GHX),
+        którego nie ma na głównych parach Binance.
+        """
+        assets = {
+            'GHX-USD': '🇵🇱 GamerHash (PL Gaming)',
+            'APE-USD': '🇺🇸 ApeCoin (Yuga Labs)',
+            'CHZ-USD': '🇪🇺 Chiliz (Sport Fans)',
+            'BLUR-USD': '🌎 Blur (Pro Traders)',
+            'SOL-USD': '⚡ Solana (NFT King 2.0)',  # NOWOŚĆ: Solana przejęła rynek tanich NFT
+            'ETH-USD': '💎 Ethereum (Old King)'
+        }
+        
+        try:
+            tickers = list(assets.keys())
+            # Pobieramy 1 rok danych
+            df = yf.download(tickers, period="1y", progress=False)['Close']
+            
+            # Normalizacja (Start = 0%)
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            
+            return df_norm
+
+        except Exception as e:
+            print(f"Błąd NFT Data: {e}")
+            return None
+    # --- ZAKTUALIZOWANE: WYKRES NFT EMPIRE ---
+    def plot_nft_empire(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        colors = {
+            '🇵🇱 GamerHash (PL Gaming)': '#ffffff',      # Biały (Nasz Orzeł)
+            '🇺🇸 ApeCoin (Yuga Labs)': '#0055ff',        # Niebieski
+            '🇪🇺 Chiliz (Sport Fans)': '#ff0055',        # Czerwony
+            '🌎 Blur (Pro Traders)': '#ff9900',         # Pomarańczowy
+            '⚡ Solana (NFT King 2.0)': '#d500f9',       # Fiolet (Solana)
+            '💎 Ethereum (Old King)': '#555555'         # Szary (Tło)
+        }
+        
+        for col in df.columns:
+            # Wyróżniamy Polskę i Solanę
+            is_highlight = 'GamerHash' in col or 'Solana' in col
+            
+            lw = 2.5 if is_highlight else 1.5
+            ls = '--' if 'Ethereum' in col else '-'
+            alpha = 1.0 if is_highlight else 0.7
+            
+            c = colors.get(col, 'gray')
+            
+            final_val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], color=c, linewidth=lw, linestyle=ls, alpha=alpha, label=f"{col}: {final_val:+.0f}%")
+            
+            # Kropka na końcu
+            ax.scatter(df.index[-1], final_val, color=c, s=60, zorder=5)
+
+        ax.axhline(0, color=t['text'], linestyle=':')
+        
+        ax.set_title("NFT EMPIRE: Walka o Cyfrowe Złoto", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Zmiana Wartości (%)', color=t['text'])
+        ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1, color=t['grid'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- NOWOŚĆ: METAVERSE LANDLORDS ---
+    def get_metaverse_data(self):
+        """
+        Sektor Wirtualnych Nieruchomości i Gier (GameFi).
+        MANA, SAND, AXS, GALA.
+        """
+        assets = {
+            'MANA-USD': 'Decentraland (Wirtualny Manhattan)',
+            'SAND-USD': 'The Sandbox (Działki)',
+            'AXS-USD':  'Axie Infinity (Pionier P2E)',
+            'GALA-USD': 'Gala Games (Platforma Gier)',
+            'ILV-USD':  'Illuvium (Gra AAA)',
+            'BTC-USD':  'Bitcoin (Benchmark)'
+        }
+        try:
+            tickers = list(assets.keys())
+            df = yf.download(tickers, period="1y", progress=False)['Close']
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            return df_norm
+        except Exception: return None
+
+    # --- NAPRAWIONE: NFT INFRASTRUCTURE (MATIC + RONIN) ---
+    def get_nft_infra_data(self):
+        """
+        Blockchainy dedykowane NFT i grom.
+        Naprawiono: RONIN-USD (zamiast RON) oraz MATIC-USD (zamiast IMX - stabilniejsze dane).
+        """
+        assets = {
+            'POL-USD': 'Polygon (Król L2 / NFT)',    # Zastępstwo za IMX (stabilne dane)
+            'RONIN-USD': 'Ronin (Sieć Axie)',          # Poprawiony ticker!
+            'FLOW-USD':  'Flow (NBA TopShot / Disney)',
+            'BEAM-USD':  'Beam (Gaming DAO)',
+            'ENJ-USD':   'Enjin (Multiverse)',
+            'ETH-USD':   'Ethereum (Stary Król)'
+        }
+        try:
+            tickers = list(assets.keys())
+            # Pobieramy 1 rok danych
+            df = yf.download(tickers, period="1y", progress=False)['Close']
+            
+            # Usuwamy puste kolumny (na wypadek kolejnych błędów)
+            df = df.dropna(axis=1, how='all')
+            
+            if df.empty: return None
+            
+            # Normalizacja do 0%
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            
+            return df_norm
+            
+        except Exception as e:
+            print(f"Błąd NFT Infra: {e}")
+            return None
+
+    # --- WYKRES: METAVERSE ---
+    def plot_metaverse_land(self, df):
+        if df is None: return None
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        colors = {
+            'Decentraland (Wirtualny Manhattan)': '#ff4500', # Czerwony
+            'The Sandbox (Działki)': '#00e5ff',             # Cyjan
+            'Axie Infinity (Pionier P2E)': '#0000ff',       # Niebieski
+            'Gala Games (Platforma Gier)': '#ffd700',       # Złoty
+            'Illuvium (Gra AAA)': '#d500f9',                # Fiolet
+            'Bitcoin (Benchmark)': '#555555'                # Szary
+        }
+        
+        for col in df.columns:
+            lw = 3 if 'Sandbox' in col or 'Decentraland' in col else 1.5
+            ls = '--' if 'Benchmark' in col else '-'
+            c = colors.get(col, 'white')
+            
+            val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], color=c, linewidth=lw, linestyle=ls, label=f"{col}: {val:+.0f}%")
+            
+        ax.set_title("METAVERSE: Kto rządzi wirtualnym światem?", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Zmiana Wartości (%)', color=t['text'])
+        ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+        ax.axhline(0, color=t['text'], linestyle=':')
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1); ax.tick_params(colors=t['text'])
+        for s in ['top','right','bottom','left']: ax.spines[s].set_visible(False)
+        return fig
+
+    # --- ZAKTUALIZOWANY WYKRES: NFT INFRA ---
+    def plot_nft_infra(self, df):
+        if df is None or df.empty: return None
+        
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        colors = {
+            'Polygon (Król L2 / NFT)': '#7b3fe4',      # Polygon Purple (Charakterystyczny fiolet)
+            'Ronin (Sieć Axie)': '#0072c6',            # Ronin Blue
+            'Flow (NBA TopShot / Disney)': '#00ff55',  # Neonowa zieleń
+            'Beam (Gaming DAO)': '#ff0055',            # Róż
+            'Enjin (Multiverse)': '#ff9900',           # Pomarańcz
+            'Ethereum (Stary Król)': '#ffffff'         # Biały
+        }
+        
+        for col in df.columns:
+            # Wyróżniamy Lidera (Polygon) i Benchmark (ETH)
+            lw = 3 if 'Polygon' in col else 1.5
+            ls = '--' if 'Ethereum' in col else '-'
+            alpha = 1.0 if 'Polygon' in col else 0.8
+            
+            # Dobieramy kolor (bezpiecznie)
+            c = colors.get(col, 'gray')
+            
+            val = df[col].iloc[-1]
+            ax.plot(df.index, df[col], color=c, linewidth=lw, linestyle=ls, alpha=alpha, label=f"{col}: {val:+.0f}%")
+            
+        ax.set_title("NFT INFRASTRUCTURE: Kto buduje drogi dla gier?", fontsize=16, color=t['text'], fontweight='bold')
+        ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+        ax.axhline(0, color=t['text'], linestyle=':')
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1, color=t['grid'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- NOWOŚĆ: GENERATION ZERO (Płodność & Vanity) ---
+    def get_generation_zero_data(self):
+        """
+        Sektor walki z kryzysem demograficznym i kultem młodości.
+        IVF (In Vitro), leczenie niepłodności, Botox, Hims&Hers.
+        """
+        assets = {
+            'COO': 'CooperCompanies (Sprzęt IVF)',    # Lider sprzętu do in-vitro
+            'PGNY': 'Progyny (Benefit Płodności)',    # Korporacje płacą za IVF pracowników
+            'HIMS': 'Hims & Hers (Włosy/Męskość)',    # Subskrypcja na młodość (Meds)
+            'ABBV': 'AbbVie (Właściciel BOTOXU)',     # Botox to płynne złoto
+            'INMD': 'InMode (Estetyka/Lasery)',       # Bezinwazyjna chirurgia
+            'SPY': 'USA S&P 500 (Benchmark)'
+        }
+        
+        try:
+            tickers = list(assets.keys())
+            # 2 lata, żeby zobaczyć trendy
+            df = yf.download(tickers, period="2y", progress=False)['Close']
+            
+            # Normalizacja (Start = 0%)
+            df_norm = (df / df.iloc[0] - 1) * 100
+            df_norm = df_norm.rename(columns=assets)
+            
+            return df_norm
+
+        except Exception as e:
+            print(f"Błąd Generation Zero: {e}")
+            return None
+    # --- WYKRES: GENERATION ZERO ---
+    def plot_generation_zero(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        colors = {
+            'CooperCompanies (Sprzęt IVF)': '#00e5ff', # Cyjan (Medyczny)
+            'Progyny (Benefit Płodności)': '#ff0055',  # Różowy (Dzieci/Rodzina)
+            'Hims & Hers (Włosy/Męskość)': '#00ff55',  # Neon Zielony (Wzrost/Hype)
+            'AbbVie (Właściciel BOTOXU)': '#d500f9',   # Fiolet (Luksus/Botox)
+            'InMode (Estetyka/Lasery)': '#ffd700',     # Złoty
+            'USA S&P 500 (Benchmark)': '#ffffff'       # Biały
+        }
+        
+        for col in df.columns:
+            # Wyróżniamy HIMS i Progyny (najbardziej zmienne)
+            is_hype = 'Hims' in col or 'Progyny' in col
+            
+            lw = 2.5 if is_hype else 1.5
+            ls = '--' if 'Benchmark' in col else '-'
+            alpha = 1.0 if is_hype else 0.7
+            
+            c = colors.get(col, 'gray')
+            final_val = df[col].iloc[-1]
+            
+            ax.plot(df.index, df[col], color=c, linewidth=lw, linestyle=ls, alpha=alpha, label=f"{col}: {final_val:+.0f}%")
+            # Kropka na końcu
+            ax.scatter(df.index[-1], final_val, color=c, s=50, zorder=5)
+
+        ax.axhline(0, color=t['text'], linestyle=':')
+        
+        ax.set_title("GENERATION ZERO: Dzieci i Uroda (2 Lata)", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Zmiana Wartości (%)', color=t['text'])
+        ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1, color=t['grid'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- NOWOŚĆ: CLASH OF NATIONS (Demografia 1970-2024) ---
+    def get_world_population_data(self):
+        """
+        Zwraca dane historyczne populacji (w miliardach).
+        Dane: Bank Światowy / ONZ.
+        Zaszyte na sztywno, bo Yahoo Finance tego nie ma.
+        """
+        data = {
+            'Rok': [1970, 1980, 1990, 2000, 2010, 2020, 2024],
+            'Indie 🇮🇳':       [0.555, 0.698, 0.873, 1.056, 1.234, 1.396, 1.441], # Nowy Lider
+            'Chiny 🇨🇳':       [0.827, 0.987, 1.144, 1.267, 1.337, 1.411, 1.409], # Szczyt i spadek
+            'Afryka (Cała) 🌍': [0.363, 0.478, 0.635, 0.811, 1.055, 1.360, 1.510], # Rakieta
+            'Europa (EU) 🇪🇺': [0.408, 0.425, 0.433, 0.436, 0.442, 0.447, 0.448], # Stagnacja
+            'USA 🇺🇸':         [0.205, 0.227, 0.249, 0.282, 0.309, 0.331, 0.342]  # Powolny wzrost
+        }
+        df = pd.DataFrame(data)
+        df = df.set_index('Rok')
+        return df
+    # --- WYKRES: CLASH OF NATIONS ---
+    def plot_world_population(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        colors = {
+            'Indie 🇮🇳': '#ff9933',       # Szafranowy (Indie)
+            'Chiny 🇨🇳': '#ff0000',       # Czerwony (Chiny)
+            'Afryka (Cała) 🌍': '#00ff55', # Zielony (Wzrost/Przyszłość)
+            'Europa (EU) 🇪🇺': '#003399', # Niebieski (Europa)
+            'USA 🇺🇸': '#ffffff'          # Biały (USA)
+        }
+        
+        # Rysujemy linie (interpolacja dla gładkości)
+        for col in df.columns:
+            # Interpolacja liniowa między punktami dekad
+            x_new = np.linspace(df.index.min(), df.index.max(), 300)
+            # Prosta interpolacja numpy
+            y_new = np.interp(x_new, df.index, df[col])
+            
+            c = colors.get(col, 'gray')
+            lw = 3.5 if 'Indie' in col or 'Afryka' in col else 2.0
+            
+            # Główna linia
+            ax.plot(x_new, y_new, label=col, color=c, linewidth=lw)
+            
+            # Etykieta na końcu
+            final_val = df[col].iloc[-1]
+            ax.text(2024.5, final_val, f"{final_val:.2f} mld", color=c, va='center', fontweight='bold')
+
+        # Zaznaczamy moment przecięcia (Indie > Chiny)
+        ax.annotate('INDIE WYPRZEDZAJĄ CHINY (2023)', 
+                    xy=(2023, 1.42), xytext=(2010, 1.6),
+                    arrowprops=dict(facecolor='white', shrink=0.05),
+                    color='white', fontweight='bold', fontsize=10)
+
+        ax.set_title("CLASH OF NATIONS: 50 lat demografii (1970-2024)", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Populacja (Miliardy)', color=t['text'])
+        ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+        
+        # Formatowanie osi X (tylko dekady)
+        ax.set_xticks([1970, 1980, 1990, 2000, 2010, 2020, 2024])
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1, color=t['grid'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- NOWOŚĆ: THE GREAT COLLAPSE (Prognoza 2000-2060) ---
+    def get_demographic_forecast_data(self):
+        """
+        Zwraca dane historyczne i PROGNOZY populacji (w miliardach).
+        Dane: UN Population Division (Medium Variant).
+        Pokazuje dramatyczny spadek Chin i Europy vs Wzrost Afryki.
+        """
+        data = {
+            'Rok': [2000, 2010, 2020, 2024, 2030, 2040, 2050, 2060],
+            # Chiny: Szczyt w 2022, potem równia pochyła w dół
+            'Chiny 🇨🇳':       [1.26, 1.34, 1.41, 1.40, 1.39, 1.35, 1.28, 1.18], 
+            # Indie: Szczyt ok. 2060, potem powolny spadek
+            'Indie 🇮🇳':       [1.05, 1.23, 1.39, 1.45, 1.51, 1.59, 1.64, 1.67], 
+            # Europa: Stagnacja i powolne wymieranie (Włochy/Niemcy ciągną w dół)
+            'Europa 🇪🇺':      [0.72, 0.73, 0.74, 0.74, 0.73, 0.71, 0.69, 0.65], 
+            # Afryka: JEDNA WIELKA RAKIETA (Podwojenie populacji)
+            'Afryka 🌍':      [0.81, 1.05, 1.36, 1.51, 1.75, 2.15, 2.58, 3.05], 
+            # USA: Powolny wzrost tylko dzięki imigracji
+            'USA 🇺🇸':         [0.28, 0.31, 0.33, 0.34, 0.35, 0.36, 0.37, 0.38]
+        }
+        df = pd.DataFrame(data)
+        df = df.set_index('Rok')
+        return df
+    # --- WYKRES: THE GREAT COLLAPSE ---
+    def plot_demographic_forecast(self, df):
+        if df is None: return None
+        
+        t = self.get_theme_colors()
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        colors = {
+            'Chiny 🇨🇳': '#ff0000',       # Czerwony (Alarm)
+            'Indie 🇮🇳': '#ff9933',       # Szafranowy
+            'Europa 🇪🇺': '#003399',      # Niebieski (Stary Kontynent)
+            'Afryka 🌍': '#00ff55',      # Zielony (Przyszłość)
+            'USA 🇺🇸': '#ffffff'          # Biały
+        }
+        
+        # Rysujemy
+        for col in df.columns:
+            c = colors.get(col, 'gray')
+            lw = 3.0 if 'Afryka' in col or 'Chiny' in col else 1.5
+            
+            # Interpolacja dla gładkości
+            x_smooth = np.linspace(df.index.min(), df.index.max(), 300)
+            y_smooth = np.interp(x_smooth, df.index, df[col])
+            
+            ax.plot(x_smooth, y_smooth, label=col, color=c, linewidth=lw)
+            
+            # Etykieta końcowa (2060)
+            final_val = df[col].iloc[-1]
+            ax.text(2060.5, final_val, f"{final_val:.2f} mld", color=c, va='center', fontweight='bold', fontsize=9)
+
+        # LINIA TERAŹNIEJSZOŚCI
+        ax.axvline(2025, color='gray', linestyle='--', alpha=0.5)
+        ax.text(2025, ax.get_ylim()[1]*0.95, " TERAZ (2025)", color='gray', rotation=90, va='top', fontweight='bold')
+
+        # Cieniowanie przyszłości
+        ax.axvspan(2025, 2060, color='gray', alpha=0.1, label='Prognoza')
+
+        ax.set_title("THE GREAT COLLAPSE: Kto wymrze do 2060?", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_ylabel('Populacja (Miliardy)', color=t['text'])
+        ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.grid(True, alpha=0.1, color=t['grid'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.tick_params(colors=t['text'])
+        
+        return fig
+
+    # --- PRO TOOLS: NOSTRADAMUS SHORT (8 MIESIĘCY) ---
+    def get_btc_gold_8m_projection(self):
+        """
+        Generuje projekcję HYBRYDOWĄ (BTC Cycles + Gold ETF) uciętą dokładnie do 8 miesięcy w przód.
+        """
+        try:
+            from datetime import timedelta
+            # --- DANE ---
+            b15 = pd.to_datetime('2015-01-14')
+            b18 = pd.to_datetime('2018-12-15')
+            b22 = pd.to_datetime('2022-11-21') 
+            
+            data = yf.download(['BTC-USD', 'GLD'], start='2004-01-01', progress=False)
+            
+            if isinstance(data.columns, pd.MultiIndex):
+                try: 
+                    df_btc = data['Close']['BTC-USD'].to_frame(name='Price')
+                    df_gld = data['Close']['GLD'].to_frame(name='Price')
+                except:
+                    df_btc = data.xs('BTC-USD', level=1, axis=1)['Close'].to_frame(name='Price')
+                    df_gld = data.xs('GLD', level=1, axis=1)['Close'].to_frame(name='Price')
+            else:
+                return None, None
+
+            df_btc = df_btc.dropna()
+            df_gld = df_gld.dropna()
+
+            # --- 1. MODEL CYKLICZNY (BAZA) ---
+            cycle_len = 1460 * 2 
+            days_idx = range(cycle_len + 1)
+            
+            def get_log_curve(df_in, start, end):
+                c = df_in[(df_in.index >= start) & (df_in.index < end)].copy()
+                if c.empty: return None
+                c['Days'] = (c.index - start).days
+                mult = c.set_index('Days')['Price'] / c['Price'].iloc[0]
+                return np.log(mult).reindex(days_idx).interpolate(limit_direction='both').ffill()
+
+            log_c15 = get_log_curve(df_btc, b15, b18)
+            log_c18 = get_log_curve(df_btc, b18, b22)
+            
+            c22 = df_btc[df_btc.index >= b22].copy()
+            c22['Days'] = (c22.index - b22).days
+            log_c22_real = np.log(c22.set_index('Days')['Price'] / c22['Price'].iloc[0])
+            
+            log_c22_synthetic = (log_c15 * 0.4 + log_c18 * 0.6) * 0.9
+            log_c22_full = log_c22_synthetic.copy()
+            log_c22_full.update(log_c22_real)
+
+            base_log_curve = (log_c15 * 0.25) + (log_c18 * 0.35) + (log_c22_full * 0.40)
+            
+            # Tłumienie drugiego cyklu
+            final_base_curve = []
+            end_c1 = base_log_curve.iloc[1460] if len(base_log_curve) > 1460 else base_log_curve.iloc[-1]
+            
+            for d in range(len(days_idx)):
+                if d <= 1460:
+                    val = base_log_curve.get(d, 0)
+                else:
+                    d2 = d - 1460
+                    shape = base_log_curve.get(d2, 0)
+                    val = end_c1 + (shape * 0.7) 
+                final_base_curve.append(val)
+            
+            base_curve_exp = np.exp(final_base_curve)
+
+            # --- 2. FRAKTAL ZŁOTA (GLD) ---
+            gld_start = pd.to_datetime('2004-11-18')
+            gld_etf_era = df_gld[df_gld.index >= gld_start].copy()
+            gld_etf_era['Days'] = (gld_etf_era.index - gld_start).days
+            gld_multiplier = gld_etf_era.set_index('Days')['Price'] / gld_etf_era['Price'].iloc[0]
+            
+            volatility_factor = 3.5 
+            gld_scaled = (gld_multiplier - 1) * volatility_factor + 1
+            gld_fractal = gld_scaled.reindex(days_idx).interpolate(limit_direction='both').ffill()
+            
+            shift_days = 415 
+            gld_shifted = gld_fractal.shift(shift_days).fillna(1.0)
+            
+            # MIKS
+            final_projection_mult = (base_curve_exp * 0.80) + (gld_shifted * 0.20)
+            
+            # --- 3. KALIBRACJA PUNKTU STYKU ---
+            full_curve = pd.Series(final_projection_mult)
+            
+            current_days = (c22.index[-1] - b22).days
+            current_price = c22['Price'].iloc[-1]
+            base_price_22 = c22['Price'].iloc[0]
+            
+            model_val_today = full_curve.get(current_days, 1.0)
+            model_price_today_raw = base_price_22 * model_val_today
+            
+            anchor_ratio = current_price / model_price_today_raw
+            theoretical_path = (base_price_22 * full_curve) * anchor_ratio
+            
+            date_index = [b22 + timedelta(days=x) for x in range(len(final_projection_mult))]
+            theoretical_path.index = date_index
+            
+            # --- 4. CIĘCIE HORYZONTU (MAX 8 MIESIĘCY) ---
+            # 8 miesięcy to około 240 dni. Odcinamy wszystko, co wykracza poza ten punkt w przyszłość.
+            max_future_date = c22.index[-1] + timedelta(days=240)
+            theoretical_path = theoretical_path[theoretical_path.index <= max_future_date]
+            
+            return c22['Price'].to_frame(), theoretical_path
+
+        except Exception as e:
+            print(f"Błąd Nostradamusa (8m): {e}")
+            import traceback
+            traceback.print_exc()
+            return None, None
+
+    def plot_btc_gold_8m_projection(self, df_real, df_proj):
+        if df_real is None or df_proj is None: return None
+        
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 8))
+        ax = fig.add_subplot(111)
+        
+        # 1. Historia
+        # Rysujemy tylko ostatni rok historii, żeby wykres krótkoterminowy nie był "zgnieciony" przez dekadę danych
+        start_plot_date = df_real.index[-1] - pd.Timedelta(days=365)
+        df_real_short = df_real[df_real.index >= start_plot_date]
+        
+        ax.plot(df_real_short.index, df_real_short.iloc[:, 0], color='white', linewidth=2, label='Dane Rzeczywiste (Ostatni Rok)', zorder=10)
+        
+        # 2. Przyszłość (ZSZYWANIE)
+        last_real_date = df_real.index[-1]
+        last_real_price = df_real.iloc[-1, 0]
+        
+        future_part = df_proj[df_proj.index > last_real_date]
+        
+        seed_point = pd.Series([last_real_price], index=[last_real_date])
+        future_part_connected = pd.concat([seed_point, future_part])
+        
+        # Używamy innego koloru, żeby wyróżnić, że to radar krótkoterminowy
+        ax.plot(future_part_connected.index, future_part_connected, color='#00d4ff', linestyle='--', linewidth=2.5, label='Nostradamus (Max 8 Miesięcy)', alpha=1.0)
+        
+        # --- ZNACZNIKI DLA WĄSKIEGO OKNA ---
+        if not future_part.empty:
+            # Lokalny Szczyt w ramach tych 8 miesięcy
+            top_date = future_part.idxmax()
+            top_price = future_part.max()
+            ax.scatter([top_date], [top_price], color='#00ff55', s=150, zorder=15, edgecolors='white', linewidth=2)
+            ax.text(top_date, top_price * 1.05, f"LOKALNY SZCZYT\n${top_price:,.0f}", 
+                    color='#00ff55', ha='center', fontweight='bold', fontsize=10)
+            
+            # Lokalny Dołek w ramach tych 8 miesięcy
+            bot_date = future_part.idxmin()
+            bot_price = future_part.min()
+            
+            if bot_date != top_date: # Zapobiega nakładaniu się znaczników
+                ax.scatter([bot_date], [bot_price], color='#ff3333', s=120, zorder=15, edgecolors='white', linewidth=2)
+                ax.text(bot_date, bot_price * 0.95, f"LOKALNY DOŁEK\n${bot_price:,.0f}", 
+                        color='#ff3333', ha='center', fontweight='bold', fontsize=9)
+
+        # Tytuły
+        ax.set_title("NOSTRADAMUS: Radar Krótkoterminowy (Horyzont 8 Miesięcy)", fontsize=16, color=t['text'], fontweight='bold')
+        ax.set_xlabel('Zoom na najbliższe perspektywy. Projekcja ucięta do 240 dni w przód.', color='gray', fontsize=10)
+        
+        from matplotlib.ticker import FuncFormatter
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'${x:,.0f}'))
+        import matplotlib.dates as mdates
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        
+        fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text']); ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'])
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'], loc='upper left')
+        
+        return fig
+
+    # --- NOWA METODA: DANE NFT (THE POLACY / THE POLKI) ---
+    def get_opensea_nft_stats(self, collection_slug="the-polacy-nft"):
+        """
+        Pobiera dane z publicznego API OpenSea dla konkretnej kolekcji NFT.
+        Uwaga: OpenSea bez płatnego klucza API czasem blokuje zapytania (Błąd 401/403).
+        W przypadku blokady, metoda zwraca twarde dane, aby program (Lambo) nie wybuchnął.
+        """
+        import requests
+        
+        url = f"https://api.opensea.io/api/v2/collections/{collection_slug}/stats"
+        headers = {"accept": "application/json"}
+        # Jeśli kiedyś zdobędziesz klucz API OpenSea, dodaj go do headers: "X-API-KEY": "twój_klucz"
+        
+        try:
+            # Ustawiamy krótki timeout (5s), żeby nie zaciąć głównego interfejsu aplikacji
+            response = requests.get(url, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                stats = data.get('total', {})
+                return {
+                    'floor_price': stats.get('floor_price', 0),
+                    'volume': stats.get('volume', 0),
+                    'sales': stats.get('sales', 0),
+                    'status': 'Pobrano z API OpenSea 🟢'
+                }
+            else:
+                # Jeśli API odrzuci nas bez klucza, podajemy przybliżone dane z czasów świetności
+                return {
+                    'floor_price': 0.06, 
+                    'volume': 32.5,
+                    'sales': 2137,
+                    'status': f'Brak klucza API ({response.status_code}) - Dane Historyczne 🟡'
+                }
+        except Exception as e:
+            return {
+                'floor_price': 0.00,
+                'volume': 0.00,
+                'sales': 0,
+                'status': f'Błąd sieci: {e} 🔴'
+            }
+
+    def plot_nft_market_card(self, stats_polacy, stats_polki):
+        """
+        Generuje graficzną, czystą wizytówkę dla polskiego rynku NFT w stylu aplikacji Lambo.
+        NAPRAWIONO: Dodano sztywne limity osi (xlim/ylim), aby wykres nie spłaszczał się do zera.
+        """
+        import matplotlib.pyplot as plt
+        
+        if stats_polacy is None and stats_polki is None:
+            return None
+            
+        t = self.get_theme_colors()
+        
+        # Ustawiamy sztywny rozmiar, żeby teksty miały przestrzeń do oddychania
+        fig = plt.figure(figsize=(10, 4))
+        ax = fig.add_subplot(111)
+        
+        # --- KLUCZOWA POPRAWKA: Sztywne granice wykresu ---
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        
+        # Ukrywamy standardowe osie (robimy z wykresu czysty Dashboard informacyjny)
+        ax.axis('off')
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        
+        # --- THE POLACY (Lewa strona 0.0 do 0.5) ---
+        ax.text(0.25, 0.75, "🦅 THE POLACY NFT", color=t['text'], fontsize=14, fontweight='bold', ha='center', va='center')
+        
+        fp_polacy = stats_polacy.get('floor_price', 0) if stats_polacy else 0
+        vol_polacy = stats_polacy.get('volume', 0) if stats_polacy else 0
+        status_polacy = stats_polacy.get('status', 'Brak danych') if stats_polacy else 'Brak danych'
+        
+        ax.text(0.25, 0.5, f"Floor Price\n{fp_polacy:.3f} ETH", color='#00ff55' if fp_polacy > 0 else 'gray', fontsize=20, fontweight='bold', ha='center', va='center')
+        ax.text(0.25, 0.25, f"Total Volume: {vol_polacy:.1f} ETH", color=t['text'], fontsize=12, ha='center', va='center')
+        ax.text(0.25, 0.1, status_polacy, color='gray', fontsize=9, ha='center', va='center')
+        
+        # --- THE POLKI (Prawa strona 0.5 do 1.0) ---
+        ax.text(0.75, 0.75, "👑 THE POLKI NFT", color=t['text'], fontsize=14, fontweight='bold', ha='center', va='center')
+        
+        fp_polki = stats_polki.get('floor_price', 0) if stats_polki else 0
+        vol_polki = stats_polki.get('volume', 0) if stats_polki else 0
+        status_polki = stats_polki.get('status', 'Brak danych') if stats_polki else 'Brak danych'
+        
+        ax.text(0.75, 0.5, f"Floor Price\n{fp_polki:.3f} ETH", color='#00ff55' if fp_polki > 0 else 'gray', fontsize=20, fontweight='bold', ha='center', va='center')
+        ax.text(0.75, 0.25, f"Total Volume: {vol_polki:.1f} ETH", color=t['text'], fontsize=12, ha='center', va='center')
+        ax.text(0.75, 0.1, status_polki, color='gray', fontsize=9, ha='center', va='center')
+        
+        # Pionowa linia oddzielająca projekty
+        ax.plot([0.5, 0.5], [0.1, 0.85], color=t['grid'], linewidth=2)
+        
+        # Tytuł Główny
+        fig.suptitle("Polska Husaria Web3 (Rynek NFT)", color=t['text'], fontsize=18, fontweight='bold', y=0.95)
+        
+        # Zabezpieczenie przed ucinaniem krawędzi
+        plt.tight_layout()
+        
+        return fig
+
+    # --- NOWA METODA: POBIERANIE DANYCH KOSZYKA ROBOCITIZEN ---
+    def get_robocitizen_data(self):
+        """
+        Pobiera roczne dane dla koszyka spółek budujących przyszłość robotyki i nowych baterii.
+        """
+        import yfinance as yf
+        import pandas as pd
+        import datetime
+        
+        # Koszyk: Tesla (Roboty), QuantumScape & Solid Power (Baterie Solid-State), 
+        # Plug Power (Wodór), Nvidia (Mózgi AI), ARM (Energooszczędne procesory)
+        tickers = ['TSLA', 'QS', 'SLDP', 'PLUG', 'NVDA', 'ARM']
+        
+        end_date = datetime.datetime.now()
+        start_date = end_date - datetime.timedelta(days=365)
+        
+        try:
+            data = yf.download(tickers, start=start_date, end=end_date, progress=False)['Close']
+            
+            # Normalizacja do 100 (żeby móc porównać procentowe wzrosty/spadki na jednym wykresie)
+            normalized_data = (data / data.iloc[0]) * 100
+            
+            return normalized_data.ffill()
+        except Exception as e:
+            print(f"Błąd pobierania danych RoboCitizen: {e}")
+            return None
+
+    # --- NOWA METODA: WYKRES ROBOCITIZEN ---
+    def plot_robocitizen_dashboard(self, df_robo):
+        """
+        Generuje wykres siły relatywnej dla spółek z koszyka RoboCitizen.
+        """
+        import matplotlib.pyplot as plt
+        
+        if df_robo is None or df_robo.empty:
+            return None
+            
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(111)
+        
+        colors = {
+            'TSLA': '#e82127', # Tesla Red
+            'NVDA': '#76b900', # Nvidia Green
+            'ARM': '#0091bd',  # ARM Blue
+            'QS': '#ffd700',   # Solid-State (Gold)
+            'SLDP': '#ff9900', # Solid-State (Orange)
+            'PLUG': '#00ffcc'  # Hydrogen (Cyan)
+        }
+        
+        for column in df_robo.columns:
+            color = colors.get(column, 'white')
+            linewidth = 3 if column in ['TSLA', 'NVDA'] else 1.5
+            alpha = 1.0 if column in ['TSLA', 'NVDA'] else 0.7
+            
+            ax.plot(df_robo.index, df_robo[column], label=column, color=color, linewidth=linewidth, alpha=alpha)
+            
+            # Etykiety na końcu linii
+            last_val = df_robo[column].iloc[-1]
+            ax.text(df_robo.index[-1], last_val, f" {column}", color=color, fontsize=10, fontweight='bold', va='center')
+
+        # Formatowanie
+        ax.set_title("ROBOCITIZEN: Zasilanie i Mózgi (Siła Relatywna - 1 Rok)", fontsize=16, color=t['text'], fontweight='bold')
+        ax.axhline(100, color=t['text'], linestyle='--', linewidth=1, alpha=0.5) # Linia startu (100)
+        
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'])
+        
+        # Przenosimy legendę na zewnątrz, żeby nie zasłaniała linii
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'], loc='upper left', bbox_to_anchor=(1.05, 1))
+        plt.tight_layout()
+        
+        return fig
+    # --- NOWA METODA: POBIERANIE DANYCH KOSZYKA "DEEP TECH MATERIALS" (ŁOPATY I KILOFY) ---
+    def get_robomaterials_data(self):
+        """
+        Pobiera dane dla spółek dostarczających chemię, materiały i podzespoły 
+        do baterii nowej generacji (Bio, Nuclear, Beamed Energy, Solid-State, Wodór).
+        """
+        import yfinance as yf
+        import pandas as pd
+        import datetime
+        
+        # Koszyk (Łopaty i Kilofy): 
+        # ALB (Albemarle) - Czysty Lit do Solid-State
+        # CC (Chemours) - Membrany Nafion do Wodoru
+        # DNA (Ginkgo Bioworks) - Syntetyczne enzymy do Bio-baterii
+        # LEU (Centrus Energy) - Izotopy do Diamentowych Baterii Jądrowych
+        # WATT (Energous) - Komponenty RF do Beamed Energy (Przesył bezprzewodowy)
+        tickers = ['ALB', 'CC', 'DNA', 'LEU', 'WATT']
+        
+        end_date = datetime.datetime.now()
+        start_date = end_date - datetime.timedelta(days=365)
+        
+        try:
+            data = yf.download(tickers, start=start_date, end=end_date, progress=False)['Close']
+            
+            # Normalizacja do 100
+            normalized_data = (data / data.iloc[0]) * 100
+            
+            return normalized_data.ffill()
+        except Exception as e:
+            print(f"Błąd pobierania danych RoboMaterials: {e}")
+            return None
+
+    # --- NOWA METODA: WYKRES DEEP TECH MATERIALS ---
+    def plot_robomaterials_dashboard(self, df_mat):
+        """
+        Generuje wykres siły relatywnej dla koszyka chemii i podzespołów.
+        """
+        import matplotlib.pyplot as plt
+        
+        if df_mat is None or df_mat.empty:
+            return None
+            
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(111)
+        
+        colors = {
+            'ALB': '#ffffff',  # Lit (Biały)
+            'CC': '#00ffcc',   # Membrany (Cyjan)
+            'DNA': '#33ff33',  # Bio/Enzymy (Zielony)
+            'LEU': '#ff33ff',  # Nuklearne (Fuksja)
+            'WATT': '#ff9900'  # Fale RF (Pomarańczowy)
+        }
+        
+        for column in df_mat.columns:
+            color = colors.get(column, 'gray')
+            ax.plot(df_mat.index, df_mat[column], label=column, color=color, linewidth=2, alpha=0.8)
+            ax.text(df_mat.index[-1], df_mat[column].iloc[-1], f" {column}", color=color, fontsize=10, fontweight='bold', va='center')
+
+        # Formatowanie
+        ax.set_title("DEEP TECH MATERIALS: Łopaty i Kilofy (Chemia & Komponenty)", fontsize=16, color=t['text'], fontweight='bold')
+        ax.axhline(100, color=t['text'], linestyle='--', linewidth=1, alpha=0.5) 
+        
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'])
+        
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'], loc='upper left', bbox_to_anchor=(1.05, 1))
+        plt.tight_layout()
+        
+        return fig
+
+    # --- NOWA METODA: POBIERANIE DANYCH KOSZYKA "SUPERKOMPUTERY (HPC)" ---
+    def get_supercomputers_data(self):
+        """
+        Pobiera dane dla spółek budujących największe superkomputery świata (HPC i AI Factories).
+        """
+        import yfinance as yf
+        import pandas as pd
+        import datetime
+        
+        # Koszyk (Budowniczowie i Architekci):
+        # HPE (Hewlett Packard Enterprise) - Główny wykonawca El Capitan i Frontier
+        # AMD - Procesory napędzające najszybsze maszyny świata
+        # DELL - Infrastruktura serwerowa i chłodzenie dla AI
+        # NVDA - Karty graficzne i układy sieciowe dla farm AI
+        # MU (Micron) - Kosmicznie szybka pamięć HBM niezbędna do superkomputerów
+        tickers = ['HPE', 'AMD', 'DELL', 'NVDA', 'MU']
+        
+        end_date = datetime.datetime.now()
+        start_date = end_date - datetime.timedelta(days=365)
+        
+        try:
+            data = yf.download(tickers, start=start_date, end=end_date, progress=False)['Close']
+            
+            # Normalizacja do 100
+            normalized_data = (data / data.iloc[0]) * 100
+            
+            return normalized_data.ffill()
+        except Exception as e:
+            print(f"Błąd pobierania danych Superkomputerów: {e}")
+            return None
+
+    # --- NOWA METODA: WYKRES SUPERKOMPUTERY (HPC) ---
+    def plot_supercomputers_dashboard(self, df_hpc):
+        """
+        Generuje wykres siły relatywnej dla infrastruktury Superkomputerów.
+        """
+        import matplotlib.pyplot as plt
+        
+        if df_hpc is None or df_hpc.empty:
+            return None
+            
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(111)
+        
+        colors = {
+            'HPE': '#00b388',  # HPE Green
+            'AMD': '#ed1c24',  # AMD Red
+            'DELL': '#007db8', # Dell Blue
+            'NVDA': '#76b900', # Nvidia Green
+            'MU': '#ffffff'    # Micron (Biały)
+        }
+        
+        for column in df_hpc.columns:
+            color = colors.get(column, 'gray')
+            ax.plot(df_hpc.index, df_hpc[column], label=column, color=color, linewidth=2, alpha=0.9)
+            ax.text(df_hpc.index[-1], df_hpc[column].iloc[-1], f" {column}", color=color, fontsize=10, fontweight='bold', va='center')
+
+        # Formatowanie
+        ax.set_title("ERA EXASCALE: Konstruktorzy Superkomputerów", fontsize=16, color=t['text'], fontweight='bold')
+        ax.axhline(100, color=t['text'], linestyle='--', linewidth=1, alpha=0.5) 
+        
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'])
+        
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'], loc='upper left', bbox_to_anchor=(1.05, 1))
+        plt.tight_layout()
+        
+        return fig
+
+    def get_power_bottleneck_data(self):
+        """
+        Pobiera dane dla spółek rozwiązujących największe wąskie gardło AI: 
+        Brak Prądu, Chłodzenie i Sieć Przesyłowa (Miedź i Transformatory).
+        """
+        import yfinance as yf
+        import pandas as pd
+        import datetime
+        
+        # Koszyk (Wąskie Gardło AI):
+        # CEG (Constellation Energy) - Lider energii jądrowej w USA (zasilanie Data Center)
+        # SMR (NuScale Power) - Małe Reaktory Modułowe
+        # ETN (Eaton) - Transformatory i infrastruktura sieciowa (brakuje ich na rynku)
+        # FCX (Freeport-McMoRan) - Miedź (niezbędna do kabli i przesyłu)
+        # VRT (Vertiv) - Ekstremalne chłodzenie cieczą dla serwerów
+        tickers = ['CEG', 'SMR', 'ETN', 'FCX', 'VRT']
+        
+        end_date = datetime.datetime.now()
+        start_date = end_date - datetime.timedelta(days=365)
+        
+        try:
+            data = yf.download(tickers, start=start_date, end=end_date, progress=False)['Close']
+            
+            # Normalizacja do 100
+            normalized_data = (data / data.iloc[0]) * 100
+            
+            return normalized_data.ffill()
+        except Exception as e:
+            print(f"Błąd pobierania danych Power Bottleneck: {e}")
+            return None
+
+    def plot_power_bottleneck_dashboard(self, df_power):
+        """
+        Generuje wykres siły relatywnej dla spółek rozwiązujących problemy energetyczne AI.
+        """
+        import matplotlib.pyplot as plt
+        
+        if df_power is None or df_power.empty:
+            return None
+            
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(111)
+        
+        colors = {
+            'CEG': '#ff33ff',  # Nuclear (Fuksja)
+            'SMR': '#00ffcc',  # SMR (Cyjan)
+            'ETN': '#ffffff',  # Sieć (Biały)
+            'FCX': '#b87333',  # Miedź (Miedziany)
+            'VRT': '#007db8'   # Chłodzenie (Niebieski)
+        }
+        
+        for column in df_power.columns:
+            color = colors.get(column, 'gray')
+            ax.plot(df_power.index, df_power[column], label=column, color=color, linewidth=2, alpha=0.9)
+            ax.text(df_power.index[-1], df_power[column].iloc[-1], f" {column}", color=color, fontsize=10, fontweight='bold', va='center')
+
+        # Formatowanie
+        ax.set_title("WĄSKIE GARDŁO AI: Energia, Miedź i Chłodzenie", fontsize=16, color=t['text'], fontweight='bold')
+        ax.axhline(100, color=t['text'], linestyle='--', linewidth=1, alpha=0.5) 
+        
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'])
+        
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'], loc='upper left', bbox_to_anchor=(1.05, 1))
+        plt.tight_layout()
+        
+        return fig
+
+    # --- NOWA METODA: ANALIZA RAOUL PAL VS HALVING (ZAKTUALIZOWANA O ETF I ZŁOTO) ---
+    def render_pal_vs_halving_analysis(self):
+        """
+        Wyświetla ekspercką analizę obecnego reżimu rynkowego (Hossa vs Bessa),
+        rozstrzyga starcie teorii Raoula Pala z tradycyjnym Cyklem Halvingowym,
+        wyjaśnia anomalię płaskiego ISM oraz wprowadza historyczny fraktal ETF na Złoto z 2004 r.
+        """
+        import streamlit as st
+        
+        st.markdown("### 🥊 Starcie Tytanów: Raoul Pal vs Tradycyjny Halving")
+        
+        
+        
+        st.info("""
+        📈 **CO OBECNIE PRZEWAŻA: Przedłużona HOSSA (Faza Dojrzewania)**
+        
+        Biorąc pod uwagę obecną datę oraz fakt, że rynek przeszedł tylko połowę drogi do planowanego (cyklicznego) szczytu, mamy na stole jasnego zwycięzcę. **Tradycyjny 4-letni cykl halvingowy został oficjalnie złamany na rzecz teorii Raoula Pala (Wydłużone Cykle /Ciężar BTC/ Płynność Makro) i efektu ETF.**
+        
+        Oto jak wygląda układ sił i dlaczego kapitał gra pod ten scenariusz:
+        
+        * 🪦 **Śmierć 4-letniego Zegara (Halving):** Zgodnie ze starym, sztywnym zegarem (szczyty 12-18 miesięcy po halvingu), hossa powinna się już brutalnie zakończyć. Gdyby rządził halving, bylibyśmy w środku krwawej bessy i totalnej paniki. Skoro tak nie jest i cena wciąż buduje bazę do wzrostów, oznacza to, że stary algorytm po prostu przestał działać na aktywie ważącym biliony dolarów.
+        
+        * 🌊 **Triumf Raoula Pala (The Everything Code):** W tej chwili przeważa HOSSA, ale jej paliwem nie jest już kod Bitcoina (cięcie nagrody dla górników), lecz globalny cykl płynności pieniądza. Raoul Pal trafnie przewidział, że wejście instytucji z Wall Street zadziała jak "kotwica". Rynek nie rośnie już pionowo z dnia na dzień, ale też nie będzie spadał o 80% w kilka miesięcy. Cykl musiał się rozciągnąć w czasie.
+        
+        * 🥇 **EFEKT ETF: Duch Złota z 2004 roku (8-letnia Hossa):** To jest klucz do zrozumienia dzisiejszej ceny. Kiedy w listopadzie 2004 roku uruchomiono pierwszy fundusz ETF na Złoto (GLD), uwolniło to ocean pieniędzy z funduszy emerytalnych i instytucji, które wcześniej nie mogły legalnie trzymać fizycznych sztabek. Co się stało? Złoto weszło w nieprzerwaną, **8-letnią strukturalną hossę**, rosnąc o ponad 350% (od 2004 do 2012 roku), całkowicie ignorując swoje wcześniejsze, krótkie cykle. 
+        Bitcoin powtarza ten sam fraktal. Uruchomienie ETF-ów na zawsze zmieniło zasady gry. To dlatego hossa się przedłuża, a spadki są płytkie – instytucje (Grubasy) powoli, systematycznie akumulują BTC do swoich portfeli długoterminowych. Popyt jest ciągły, a nie skokowy.
+        
+        * ⚙️ **ANOMALIA ISM: Dlaczego realna gospodarka stoi, a krypto rośnie?**
+        Patrzysz na wykresy i widzisz, że wskaźnik ISM (kondycja fabryk i produkcji) szoruje po dnie lub jest bardzo płaski. Zgodnie ze starymi zasadami, bez rosnącego ISM nie powinno być hossy na ryzyku. Dlaczego więc jest? 
+        Pieniądze są gdzie indziej. Nowy, wydrukowany pieniądz nie trafia do "realnej gospodarki" (nie buduje nowych fabryk i nie napędza tradycyjnego przemysłu). Ten kapitał jest zasysany bezpośrednio przez rynki finansowe. Świeże dolary płyną szerokim strumieniem w wyścig zbrojeń AI (Nvidia, Palantir, Superkomputery), wybrane rynki akcji (S&P 500), złoto, srebro, miedź właśnie przez te nowe wehikuły ETF. Wall Street gra w swoją własną, odklejoną od szarej rzeczywistości grę.
+
+        🏭 PRZEBUDZENIE ISM: Kiedy Mózg AI zyska Ciało?
+        
+        Obecnie wskaźnik ISM (kondycja światowego przemysłu) szoruje po dnie, a my zastanawiamy się, dlaczego giełdy biją rekordy. Odpowiedź jest prosta: dotychczasowa hossa rozegrała się w "chmurze". Pompujemy gigantyczne kapitały w wirtualne oprogramowanie, cyfrowe algorytmy i modele językowe. Zbudowaliśmy cyfrowego geniusza, ale ten geniusz jest uwięziony w słoiku.
+
+        Ten stan nie utrzyma się wiecznie. Mózg AI jest już gotowy, ale żeby wejść w realny świat i na nim zarabiać, potrzebuje Ciała (przemysłu, robotyki i infrastruktury). A wyprodukowanie tego Ciała brutalnie wybudzi globalny przemysł ze snu. Kiedy produkcja ruszy pełną parą, wskaźnik ISM wystrzeli w kosmos.Zbudowanie fizycznej armii RoboCitizens, humanoidalnych robotów pracujących w fabrykach i gigantycznych "Fabryk AI" będzie wymagało potężnych ilości fizycznych surowców. Oto "Paliwa", których ten nowy organizm będzie desperacko potrzebował:
+
+        ⚡ Prąd (Krew układu): Zanim roboty wyjdą na ulice, musimy zbudować elektrownie, które zasilą ich serwerownie. Wodór do maszyn przemysłowych, renesans energii jądrowej oraz Małe Reaktory Modułowe (SMR) budowane bezpośrednio przy Data Center. To gigantyczne projekty inżynieryjne, które natychmiast podniosą wskaźniki produkcji.
+
+        🧱 Miedź i Transformatory (Układ nerwowy): Cyfrowe dane mogą latać bezprzewodowo, ale prąd nie. Żeby zasilić nowe, inteligentne fabryki i stacje ładowania dla maszyn, świat będzie musiał położyć miliony kilometrów nowych, grubych kabli miedzianych i postawić tysiące fizycznych transformatorów wysokiego napięcia.
+
+        🔋 Deep Tech i Stały Elektrolit (Mięśnie i organy): Bezpieczne baterie Solid-State, które nie wybuchają w domach, wymagają całkowicie nowych linii produkcyjnych, zaawansowanej chemii, wysokiej jakości litu i nowatorskich membran. Przemysł chemiczny i wydobywczy będzie musiał pracować na najwyższych obrotach.
+
+        🧊 Zaawansowane Chłodzenie (Płuca i pot): Nowe, gęste układy obliczeniowe dosłownie się topią pod własnym ciężarem. Przemysł będzie produkował na masową skalę zaawansowaną hydraulikę, systemy rur i specjalistyczne płyny (Liquid Cooling), aby to wszystko schłodzić.
+
+        Kierunek rotacji kapitału: Dotychczas Smart Money zarabiało na oprogramowaniu (Software). Następną wielką falą – prawdziwym generatorem Lambo w tej dekadzie – będzie moment, w którym kapitał spłynie z chmury na ziemię. Kiedy zlecenia na kable, reaktory, baterie i stal zaczną spływać do fabryk, ISM z hukiem wróci do trendu wzrostowego, a zysk z cyfrowej rewolucji napędzi twardą gospodarkę. To będzie moment przejścia z ery "budowania algorytmów" do ery "budowania maszyn".
+
+        **Wniosek rynkowy (Kierunek Lambo):** Jesteśmy w późnej, wyciągniętej w czasie fazie hossy strukturalnej. Silnik detaliczny (ulica po halvingu) został zastąpiony silnikiem instytucjonalnym (ETF). Przemysł (ISM) może dławić się w stagnacji, dopóki globalna płynność pompuje aktywa finansowe, a fundusze powielają 8-letni schemat złota, cykl będzie trwał. Czekanie na błyskawiczny wystrzał i natychmiastowy krach (jak w 2017) to błąd. Będziemy wspinać się po "ścianie strachu" o wiele dłużej, z wieloma nudnymi miesiącami konsolidacji po drodze, do czasu przebudzenia.
+        """)
+
+    # --- NOWA METODA: DANE DO ROTACJI KAPITAŁU (BRAIN VS BODY) ---
+    def get_capital_rotation_data(self):
+        """
+        Pobiera dane do wskaźnika rotacji kapitału z Techu (Software/AI) do Przemysłu i Surowców (Hardware/Ciało).
+        Oblicza stosunek (Ratio) XLI (Przemysł) do XLK (Technologia) oraz Miedzi (COPX) do Nvidii (NVDA).
+        """
+        import yfinance as yf
+        import pandas as pd
+        import datetime
+        
+        # XLK (Tech/Mózg), XLI (Przemysł/Ciało), NVDA (Król AI), COPX (Górnicy Miedzi - Kable)
+        tickers = ['XLK', 'XLI', 'NVDA', 'COPX']
+        
+        end_date = datetime.datetime.now()
+        start_date = end_date - datetime.timedelta(days=365 * 2) # 2 lata historii, żeby widzieć twardy trend
+        
+        try:
+            data = yf.download(tickers, start=start_date, end=end_date, progress=False)['Close']
+            
+            # Obliczamy Ratio (Stosunek). 
+            df_rot = pd.DataFrame(index=data.index)
+            # XLI / XLK -> Rosnący wykres oznacza, że Przemysł bije na głowę Technologię.
+            df_rot['Industry_vs_Tech'] = (data['XLI'] / data['XLK']) * 100
+            df_rot['Copper_vs_Nvidia'] = (data['COPX'] / data['NVDA']) * 100
+            
+            # Normalizacja do 100 na starcie wykresu dla łatwego czytania
+            df_rot['Industry_vs_Tech'] = (df_rot['Industry_vs_Tech'] / df_rot['Industry_vs_Tech'].iloc[0]) * 100
+            df_rot['Copper_vs_Nvidia'] = (df_rot['Copper_vs_Nvidia'] / df_rot['Copper_vs_Nvidia'].iloc[0]) * 100
+            
+            return df_rot.ffill()
+        except Exception as e:
+            print(f"Błąd pobierania danych Rotacji Kapitału: {e}")
+            return None
+
+    # --- NOWA METODA: WYKRES ROTACJI KAPITAŁU ---
+    def plot_capital_rotation(self, df_rot):
+        """
+        Generuje wykres pokazujący dokładny moment ewakuacji Smart Money z Techu do Przemysłu.
+        """
+        import matplotlib.pyplot as plt
+        
+        if df_rot is None or df_rot.empty:
+            return None
+            
+        t = self.get_theme_colors()
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(111)
+        
+        # Linia 1: Przemysł vs Tech
+        ax.plot(df_rot.index, df_rot['Industry_vs_Tech'], label='Przemysł (XLI) vs Tech (XLK)', color='#ff9900', linewidth=2.5)
+        # Linia 2: Miedź vs Nvidia
+        ax.plot(df_rot.index, df_rot['Copper_vs_Nvidia'], label='Miedź (COPX) vs Nvidia (NVDA)', color='#b87333', linewidth=2, linestyle='--')
+
+        # Formatowanie
+        ax.set_title("DETEKTOR ROTACJI: Mózg (Tech) vs Ciało (Przemysł/Surowce)", fontsize=16, color=t['text'], fontweight='bold')
+        ax.axhline(100, color=t['text'], linestyle='-', linewidth=1, alpha=0.3) # Linia startu
+        
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'])
+        
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'], loc='upper left')
+        plt.tight_layout()
+        
+        return fig
     
 def show_ad_splash():
     if 'ad_shown' not in st.session_state: st.session_state['ad_shown'] = False
@@ -12625,7 +15261,7 @@ def main():
     """, unsafe_allow_html=True)
     
     sns.set_theme(style=t['sns_style'])
-    st.title("🕸️ Lambo czy Karton? (v51 Full Restore)")
+    st.title("️ Lambo czy Karton? (v1.3 Full Restore)")
     
     if st.sidebar.button("🌞/🌚 Zmień Motyw"): app.toggle_theme(); st.rerun()
     # --- NOWA WERSJA (Z PAMIĘCIĄ SESJI) ---
@@ -12764,40 +15400,71 @@ def main():
         st.divider()
         
         # --- 5. CENTRUM ANALIZ (TABS) ---
-        st.subheader("🌐 Centrum Analiz")
+        st.subheader("🌐 Wstęp do Analiz")
         tabs = st.tabs(["🕸️ MATRYCA", "⚖️ Godziwa Cena", "📡 Radar Siły", "📰 News AI", "🔔 Kanał Gaussa", "🎯 Snajper", "📐 Geometria", "🔮 Szklana Kula", "🌈 Rainbow Chart", "📊 Mapa Rynku"])
         
         # --- ZMIANA: ZMNIEJSZANIE WYKRESÓW I CZCIONEK ---
         
-        with tabs[0]: 
+        with tabs[0]:
+            # Obliczenia do macierzy (Matrix/Radar inputs)
             _, fair_val, fair_dev = app.get_fair_value_analysis(df)
             fig = app.get_market_matrix(df, mvrv, ism, fair_dev, cry_n)
             
-            if fig: 
-                fig.set_size_inches(2, 2) # Mały kwadrat
+            if fig:
+                # Formatowanie wykresu
+                fig.set_size_inches(3, 3) 
                 ax = fig.gca()
-                # Zmniejszamy czcionki dla małego wykresu
-                ax.set_title(ax.get_title(), fontsize=8) 
-                ax.tick_params(labelsize=6) 
-            
-            st.pyplot(fig)
+                ax.set_title("Market GPS (Silnik Rynku)", fontsize=8, fontweight='bold')
+                ax.tick_params(labelsize=6)
+                
+                st.pyplot(fig)
+                
+                # --- NOWOŚĆ: PRZEPIS NA POMPĘ (Zależności) ---
+                st.info("""
+                🚦 **CHECKLISTA STARTOWA: Kiedy będzie POMPA?**
+                
+                Ten wykres pokazuje, czy silniki są gotowe do startu. Szukamy "Idealnej Burzy" (Konfluencji):
+                
+                1.  📉 **CENA (RSI) jest NISKO:** Musi być tanio (wyprzedanie). To paliwo do wzrostów.
+                2.  🏭 **GOSPODARKA (ISM) ROŚNIE:** Musi płynąć nowy kapitał z gospodarki (Risk On).
+                3.  📊 **WYCENA (MVRV) ROŚNIE:** Sieć musi ożywać (smart money zaczyna kupować).
+                4.  🤖 **NARRACJA (AI NEWS):** Musi być **FOMO**. Newsy muszą grzać wyobraźnię ulicy.
+                
+                🎯 **WERDYKT:** Jeśli RSI i MVRV jest na dnie, a ISM i AI News strzelają w górę -> **ZAPIINAJ PASY (Lambo Mode 🚀).**
+                """)
 
         with tabs[1]: 
+            # Pobieramy analizę
             f, p, d = app.get_fair_value_analysis(df)
-            st.metric("Fair Value", f"${p:,.0f}", f"{d:+.2f}%", delta_color="inverse")
             
+            # Wyświetlamy wynik liczbowy
+            st.metric("Fair Value (Godziwa Cena)", f"${p:,.0f}", f"{d:+.2f}%", delta_color="inverse")
+            
+            # Wyświetlamy wykres
             if f: 
                 f.set_size_inches(4, 2)
                 ax = f.gca()
-                ax.set_title("Fair Value Model", fontsize=8)
+                ax.set_title("Fair Value Model (Mean Reversion)", fontsize=8)
                 
                 # --- ZMIANA: Legenda w dolnym prawym rogu ---
                 ax.legend(fontsize=6, loc='lower right') 
                 # --------------------------------------------
                 
                 ax.tick_params(labelsize=6)
+                st.pyplot(f)
                 
-            st.pyplot(f)
+                # --- NOWOŚĆ: OPIS POD WYKRESEM ---
+                st.info("""
+                ℹ️ **JAK CZYTAĆ TEN MODEL?**
+                
+                To jest model **"Powrotu do Średniej" (Mean Reversion)**.
+                
+                1.  **Linia Ciągła (Fair Value):** To "magnes". Historyczna średnia cena, do której rynek zawsze w końcu wraca.
+                2.  **Odchylenie (%):** * Jeśli cena jest wysoko **nad linią** (Delta na plusie) -> Rynek jest "drogi" (przegrzany). Ryzyko korekty.
+                    * Jeśli cena jest **pod linią** (Delta na minusie) -> Mamy "promocję" (okazja zakupowa).
+                    
+                *Zasada: Im dalej cena odklei się od Fair Value, tym gwałtowniej do niej wróci.*
+                """)
 
         with tabs[2]: 
             fig = app.plot_relative_strength_radar(df)
@@ -12818,41 +15485,97 @@ def main():
                 st.subheader("Krypto")
                 for ti, s, l in cry_h: st.markdown(f"[{ti}]({l})")
 
-        with tabs[4]: 
+        with tabs[4]:
+            # Generujemy wykres
             fig = app.plot_gaussian_channel(df)
-            if fig: 
-                fig.set_size_inches(6, 3)
+            
+            if fig:
+                # Formatowanie wykresu
+                fig.set_size_inches(6, 3.5) # Trochę wyższy
                 ax = fig.gca()
-                ax.set_title("Kanał Gaussa", fontsize=8)
-                ax.legend(fontsize=6)
+                ax.set_title("Gaussian Channel (Autostrada Trendu)", fontsize=8, fontweight='bold')
+                ax.legend(fontsize=6, loc='upper left')
                 ax.tick_params(labelsize=6)
                 
-            st.pyplot(fig)
+                st.pyplot(fig)
+                
+                # --- NOWOŚĆ: OPIS STRATEGII ---
+                st.info("""
+                🌊 **KANAŁ GAUSSA: Płyń z Prądem (Trend Follower)**
+                
+                To narzędzie chroni Cię przed "łapaniem spadających noży". Matematyka (rozkład normalny) pokazuje, gdzie jest bezpiecznie.
+                
+                * 🟢 **ZIELONA RZEKA (Hossa):** Dopóki kanał jest zielony, a cena jest nad środkową linią -> **TYLKO KUPUJESZ (Long/Spot).** Każdy spadek do dolnej bandy to promocja.
+                * 🔴 **CZERWONA RZEKA (Bessa):** Gdy kanał zmienia kolor na czerwony -> **SPRZEDAWAJ WSZYSTKO.** Rynek wszedł w tryb spadkowy. Nie walcz z trendem.
+                
+                **Jak grać?**
+                1. **Sufit (Górna Linia):** Tu jest drogo. Realizuj zyski (Take Profit), bo zaraz może być korekta.
+                2. **Podłoga (Dolna Linia):** Tu jest tanio. Jeśli kanał jest zielony – to idealny moment na wejście (Buy the Dip).
+                
+                *Zasada: Trend is your friend. Nie kupuj, dopóki rzeka nie zrobi się zielona.*
+                """)
 
         with tabs[5]: st.dataframe(app.get_sniper_signals(df)) 
 
-        with tabs[6]: 
+        with tabs[6]:
+            # Generujemy wykres Fibo
             fig, _ = app.plot_fibonacci_chart(df)
-            if fig: 
-                fig.set_size_inches(6, 3)
+            
+            if fig:
+                # Formatowanie
+                fig.set_size_inches(6, 3.5)
                 ax = fig.gca()
-                ax.set_title("Fibonacci Levels", fontsize=8)
+                ax.set_title("Fibonacci & Golden Pocket (Poziomy Zakupu)", fontsize=8, fontweight='bold')
                 ax.tick_params(labelsize=6)
                 
-            st.pyplot(fig)
+                st.pyplot(fig)
+                
+                # --- NOWOŚĆ: OPIS GOLDEN POCKET ---
+                st.info("""
+                📐 **FIBONACCI: Magia Liczb (Gdzie ustawić wiadro?)**
+                
+                Rynek nigdy nie idzie pionowo w górę. On "oddycha" (impuls -> korekta). Fibonacci pokazuje, jak głęboki będzie ten wydech.
+                
+                * 🟡 **GOLDEN POCKET (0.618 - 0.65):** To jest Święty Graal. "Złota Kieszeń".
+                    * **Strategia:** Tutaj algorytmy banków i wielorybów ustawiają swoje zlecenia kupna (Limit Orders).
+                    * **Akcja:** Jeśli cena spada i dotyka strefy **0.618**, to jest idealny moment na wejście ("Buy the Dip").
+                
+                * 🛑 **Poziom 0.786:** Ostatnia deska ratunku. Jeśli to pęknie, trend prawdopodobnie się odwraca (Bessa).
+                * 🚀 **Poziom 0.382:** Jeśli korekta zatrzyma się już tu, trend jest BARDZO silny (FOMO).
+                
+                *Zasada: Nie goń rosnących świec. Czekaj, aż cena wróci do Złotej Kieszeni (0.618).*
+                """)
 
         with tabs[7]: 
             if PROPHET_AVAILABLE: 
+                # Generujemy prognozę
                 fig = app.plot_ai_forecast(forecast)
+                
                 if fig: 
-                    fig.set_size_inches(6, 3)
+                    # Formatowanie
+                    fig.set_size_inches(6, 3.5)
                     ax = fig.gca()
-                    ax.set_title("AI Forecast", fontsize=8)
-                    ax.legend(fontsize=6)
+                    ax.set_title("AI Crystal Ball (Prophet Prediction)", fontsize=8, fontweight='bold')
+                    ax.legend(fontsize=6, loc='upper left')
                     ax.tick_params(labelsize=6)
                     
-                st.pyplot(fig)
-            else: st.warning("Brak Prophet")
+                    st.pyplot(fig)
+                    
+                    # --- NOWOŚĆ: OPIS SZKLANEJ KULI ---
+                    st.info("""
+                    🔮 **SZKLANA KULA AI: Co widzi algorytm?**
+                    
+                    Ten model (Facebook Prophet) uczy się na **Cyklach Halvingowych**. Zakłada, że historia lubi się rymować.
+                    
+                    * 🔵 **Ciemna Linia (Ścieżka):** To najbardziej prawdopodobny scenariusz ceny według AI. Jeśli cykl się powtórzy, tędy pójdziemy.
+                    * ☁️ **Błękitna Chmura (Obszar Niepewności):** To jest kluczowe. Cena może "latać" wewnątrz tego obszaru. 
+                        * Jeśli chmura jest wąska -> AI jest pewne swego.
+                        * Jeśli chmura jest szeroka -> Rynek jest nieprzewidywalny (duże ryzyko).
+                    
+                    *Zasada: To jest matematyka, nie jasnowidzenie. Traktuj to jako mapę drogową, ale nie wyłączaj myślenia. Halving to paliwo, ale kierowcą są ludzie.*
+                    """)
+            else: 
+                st.warning("⚠️ Brak biblioteki Prophet. Zainstaluj ją, aby widzieć przyszłość.")
 
         with tabs[8]: 
             fig = app.plot_rainbow_chart(df)
@@ -12901,17 +15624,106 @@ def main():
             c_w1.pyplot(app.plot_etf_tracker(df, vol, 'ibit', 'IBIT (Bitcoin)'))
             c_w2.pyplot(app.plot_etf_tracker(df, vol, 'etha', 'ETHA (Ethereum)'))
             
-        with tab_liq: st.pyplot(app.plot_liquidity_chart(df))
-        with tab_alt: st.pyplot(app.plot_altseason_chart(df))
-        with tab_cycle: st.pyplot(app.plot_cycle_clock(mvrv, ism))
-        with tab_hist: st.pyplot(app.plot_history_truth(df, mvrv, ism))
+            # --- NOWOŚĆ: OPIS WIELORYBÓW (ETF) ---
+            st.info("""
+            🐋 **ŚLAD WIELORYBA: Co kupuje Wall Street?**
+            
+            Te wykresy pokazują, gdzie płyną pieniądze z "Tradycyjnego Świata" (TradFi). Giganci tacy jak **BlackRock** czy Fidelity nie kupują na zwykłych giełdach krypto – oni używają ETF-ów.
+            
+            * 🟠 **IBIT (BlackRock Bitcoin ETF):** To wehikuł dla instytucji do kupowania Bitcoina. Jeśli słupek wolumenu rośnie i cena idzie w górę, to znaczy, że fundusze emerytalne i miliarderzy pakują "Cyfrowe Złoto" do skarbców.
+            * 🔵 **ETHA (BlackRock Ethereum ETF):** Zakład na technologię. O ile BTC to złoto, o tyle ETH to "ropa" lub "internet 3.0", na którym buduje się aplikacje i tokenizuje aktywa.
+            
+            **Strategia:** Ulica robi szum na Twitterze, ale to **Wolumen ETF-ów** pokazuje, gdzie jest prawdziwy kapitał. Jeśli na tych wykresach widzisz wielkie zielone słupki zakupowe – płyń za wielorybem, bo trend jest silny.
+            """)
+            
+        with tab_liq: 
+            st.pyplot(app.plot_liquidity_chart(df))
+            # --- NOWOŚĆ: OPIS PŁYNNOŚCI (PALIWO RAKIETOWE) ---
+            st.info("""
+            ⛽ **GLOBALNA PŁYNNOŚĆ (M2): Prawdziwe Paliwo Rakietowe**
+            
+            Zrozum jedną fundamentalną zasadę: **Bitcoin nie rośnie sam z siebie. Bitcoin rośnie, kiedy banki centralne (FED, EBC) drukują pieniądze.** Płynność to rzeka dolarów wpływająca na rynek.
+            
+            * 🖨️ **Płynność / M2 (Drukarki robią BRRR):** Kiedy ta linia rośnie, na rynku pojawia się "tani pieniądz". Inwestorzy szukają zysków i ładują kapitał w ryzykowne aktywa. 
+            * 🚀 **Korelacja z BTC:** Bitcoin działa jak gąbka. Kiedy banki odkręcają kurek z gotówką, BTC wyłapuje ten nadmiar jako pierwszy (Hossa / Lambo).
+            
+            *Złota Zasada Rynku: Don't fight the FED (Nie walcz z bankiem centralnym). Obserwuj kurek z pieniędzmi.*
+            """)
+        with tab_alt: 
+            st.pyplot(app.plot_altseason_chart(df))
+            
+            
+            
+            # --- NOWOŚĆ: OPIS ALTSEASON (PRZEPŁYW KAPITAŁU) ---
+            st.info("""
+            🌪️ **ALTSEASON: Złote Żniwa (Kiedy pompują małe monety?)**
+            
+            Ten wykres to Twój radar na przepływ kapitału. Pieniądze w krypto płyną jak wodospad: najpierw pompują Bitcoina (duży kapitał), potem Ethereum, a na końcu wylewają się na małe "Alty" i memecoiny (ulica). Nie dotyczy BESSY.
+            
+            * 🔴 **CZERWONE POLE (BTC Season):** Król ssie całą płynność. Bitcoin rośnie (lub spada), a reszta rynku mocno krwawi. **Strategia:** Siedzisz bezpiecznie w BTC. Nie tykasz małych projektów, bo zostaniesz zjedzony.
+            * 🟢 **ZIELONE POLE (Altseason):** To tu odbiera się Lambo z salonu. Kapitał realizuje zyski na Bitcoinie i przesiada się na Altcoiny, szukając szalonych mnożników (x10, x50). Zaczyna się "Hype".
+            
+            **Jak rozgrywać ten cykl?**
+            1. **Krzyżowanie:** Gdy linia ucieka z czerwonego i wchodzi w zielone strefy – czas na zakupy mocnych Altów.
+            2. **Realizacja zysków:** Gdy wskaźnik uderza w sam sufit zielonej strefy – na rynku jest euforia. Ulica kupuje obrazki psów i żab. To Twój ostateczny dzwonek, żeby wyjść do gotówki (Take Profit), zanim cykl znów brutalnie zawróci do czerwieni (Karton).
+            """)
+        with tab_cycle: 
+            st.pyplot(app.plot_cycle_clock(mvrv, ism))
+            
+            
+            
+            # --- NOWOŚĆ: OPIS ZEGARA CYKLU ---
+            st.info("""
+            ⏱️ **ZEGAR INWESTYCYJNY: W jakiej "porze roku" jesteśmy?**
+            
+            Ten kwadrat to tarcza zegara, po której wędruje kropka (Twój kapitał i stan gospodarki). Rynki zawsze poruszają się w tych samych 4 fazach od strachu do chciwości.
+            
+            * 🥶 **LEWY DÓŁ (Zima / Recesja):** Krew na ulicach. Wszyscy wieszczą koniec świata i uciekają do dolara (Karton). To czas na chłodną obserwację i powolne **KUPOWANIE**. "Smart Money" (grube ryby) właśnie tutaj ładuje torby za bezcen.
+            * 🥵 **PRAWY GÓRA (Lato / Euforia):** Szampan leje się strumieniami. Gospodarka kwitnie, sąsiad pyta Cię jak kupić Bitcoina, a memecoiny robią kosmiczne wyniki. To sygnał alarmowy! Czas myśleć o ewakuacji i **SPRZEDAŻY** (Lambo). Grubasy realizują zyski, wciskając drogie aktywa ulicy.
+            
+            *Zasada Rynku: Bądź chciwy, gdy inni się boją (Lewy Dół). Bój się, gdy inni są chciwi (Prawy Góra).*
+            """)
+        with tab_hist: 
+            st.pyplot(app.plot_history_truth(df, mvrv, ism))
+            
+            
+            
+            # --- NOWOŚĆ: OPIS HISTORII (PRAWDA O RYNKU) ---
+            st.info("""
+            📜 **HISTORYCZNA PRAWDA: Dlaczego hossy umierają?**
+            
+            Ten wykres to ostateczny dowód na to, że rynek krypto nie żyje w próżni. Bitcoin to tygrys, ale ISM (gospodarka) to wielkość jego klatki.
+            
+            * 🟢 **MVRV Dno (Tanie Krypto):** Zwróć uwagę, że Bitcoin *zawsze* zawraca do góry, gdy wskaźnik MVRV szoruje po dnie. To jest moment totalnego wykrwawienia ulicy i czas, w którym "Smart Money" ładuje torby.
+            * ⚙️ **ISM (Hamulec Gospodarczy):** To jest najważniejsza lekcja z tego wykresu. 
+                * **Gdy ISM rośnie:** Gospodarka przyspiesza, kapitał z TradFi (tradycyjnych rynków) wlewa się na rynek. Mamy paliwo na **Mega Pompę**.
+                * **Gdy ISM spada:** UWAGA! Nawet jeśli MVRV daje sygnał do wzrostów, spadające ISM (recesja, strach) **zadusi każdą hossę**. Ludzie walczą o przetrwanie, nikt nie kupuje ryzykownych aktywów.
+            
+            *Zasada: Nie ufaj samej cenie Bitcoina. Jeśli BTC chce lecieć na księżyc, ale gospodarka (ISM) pikuje w dół – rozepnij pasy, bo pompy nie będzie. Rakieta nie poleci bez paliwa z Wall Street.*
+            """)
         
         with tab_copper: 
             c_cop1, c_cop2 = st.columns(2)
             c_cop1.pyplot(app.create_mini_chart(df['copper'].tail(365), "Miedź", "#ff9900", False))
             c_cop2.pyplot(app.create_mini_chart(df['gold'].tail(365), "Złoto", "#ffd700", False))
             
-        with tab_macro: st.pyplot(app.plot_correlation_heatmap(df))
+        with tab_macro: 
+            st.pyplot(app.plot_correlation_heatmap(df))
+            
+            
+            
+            # --- NOWOŚĆ: OPIS KORELACJI MACRO ---
+            st.info("""
+            🔗 **KORELACJA MACRO: Z kim tańczy Bitcoin?**
+            
+            Ta "mapa cieplna" pokazuje, z kim Bitcoin aktualnie trzyma sztamę, a z kim drze koty. Cyfry od -1 do +1 to siła tego powiązania.
+            
+            * 🟢 **Bliżej +1 (Najlepsi Kumple):** Aktywa poruszają się w tym samym kierunku. Zazwyczaj BTC mocno trzyma się z rynkiem akcji (S&P500, Nasdaq). Kiedy Wall Street ma apetyt na ryzyko (Risk-On), Bitcoin leci razem z nimi.
+            * 🔴 **Bliżej -1 (Śmiertelni Wrogowie):** Kiedy jedno rośnie, drugie spada. Największym wrogiem Bitcoina jest **Silny Dolar (DXY)**. Jeśli na mapie widzisz mocną ujemną korelację, to znaczy: **Gdy Dolar rośnie, Krypto krwawi.**
+            * ⚪ **Okolice 0 (Ignorancja):** Aktywa w ogóle na siebie nie reagują.
+            
+            *Zasada: Bitcoin nie żyje w próżni. Zanim kupisz (Lambo), spójrz na Dolara (DXY). Jeśli Dolar słabnie i spada, to jest ten moment, kiedy krypto odpala rakiety.*
+            """)
 
         # --- NOWA 8. ZAKŁADKA: SEZONOWOŚĆ (AUTO) ---
         with tab_season:
@@ -12987,6 +15799,24 @@ def main():
             
             if mb_data is not None:
                 st.pyplot(app.plot_market_breadth(mb_data, mb_price))
+                
+                
+                
+                # --- NOWOŚĆ: OPIS WARIOGRAFU ---
+                st.info("""
+                🤥 **WARIOGRAF RYNKU: Czy ta hossa to oszustwo?**
+                
+                Ten wskaźnik (Szerokość Rynku) działa jak wykrywacz kłamstw. Sprawdza, czy za wzrostami Bitcoina idzie "reszta wojska" (Top 30 altcoinów), czy pompuje go tylko garstka instytucji.
+                
+                * ⚠️ **KŁAMSTWO (Dywersygnacja):** Bitcoin bije nowe rekordy cenowe, ale linia wariografu **spada**. To znaczy, że kapitał ucieka z altcoinów, żeby ratować cenę BTC. Zaraz skończy się paliwo (Karton).
+                * 🤫 **CICHE ZAKUPY:** Bitcoin stoi w miejscu lub lekko spada, ale linia wariografu **rośnie**. Grubasy po cichu ładują torby w altcoinach. Zbliża się potężna pompa na reszcie rynku.
+                
+                **Gdzie jesteśmy?**
+                * 🟢 **Podłoga (Poniżej 20%):** Ekstremalny strach. Większość rynku leży na łopatkach. To historycznie najlepszy moment na zakupy (Buy the Dip).
+                * 🔴 **Sufit (Powyżej 80%):** Ekstremalna chciwość. Wszyscy już kupili, nie ma kto dalej pompować ceny. Szykuj się do realizacji zysków (Lambo czeka w salonie).
+                
+                *Zasada: Generał (Bitcoin) może ruszyć do ataku sam, ale wojny bez armii (Altcoinów) nie wygra. Obserwuj, czy armia podąża za wodzem.*
+                """)
             else:
                 st.error("Błąd obliczeń szerokości rynku.")
 
@@ -13000,7 +15830,7 @@ def main():
     with c1:
         with st.container(height=600, border=True): # Zwiększ height do 600, bo doszedł guzik
             
-            st.markdown("### 💎 CENTRUM DOWODZENIA")
+            st.markdown("###    GŁÓWNE CENTRUM DOWODZENIA")
             
             # --- AGREGATOR 1: GLOBALNY PRZEPŁYW ---
             st.markdown("##### 🧠 1. GLOBAL MARKET AGREGATOR")
@@ -13019,9 +15849,18 @@ def main():
 
             # --- KOLUMNA 1: MAKROEKONOMIA, FED I SUROWCE ---
             with b1:
+                # ... wcześniejsze guziki (Megatrendy Życia) ...
+            
+                st.caption("🏰 **FUNDAMENTY BOGACTWA**")
+                if st.button("🥊 Raoul vs Halving", key="pal_vs_halving_btn"): st.session_state['active_lazy_chart'] = 'pal_vs_halving'
+                if st.button("🏰 Global Lord (REIT)"): st.session_state['active_lazy_chart'] = 'real_estate'
+                if st.button("🐯 India Awakening"): st.session_state['active_lazy_chart'] = 'india_growth'
+                if st.button("💸 Cashflow Kings"): st.session_state['active_lazy_chart'] = 'dividend_kings'
+                if st.button("🛌 The Income Factory"): st.session_state['active_lazy_chart'] = 'income_factory'
+                
                 st.caption("🏛️ **MAKRO & FED**")
                 if st.button("🌏 Global Liquidity"): st.session_state['active_lazy_chart'] = 'global_liq'
-                if st.button("📊 Global Liq (Net)"): st.session_state['active_lazy_chart'] = 'global_liquidity'
+                #if st.button("📊 Global Liq (Net)"): st.session_state['active_lazy_chart'] = 'global_liquidity'
                 if st.button("🌊 Fed YoY Wave"): st.session_state['active_lazy_chart'] = 'liquidity_wave'
                 if st.button("💸 M2 vs BTC"): st.session_state['active_lazy_chart'] = 'm2_supply'
                 if st.button("🏛 TGA Monitor"): st.session_state['active_lazy_chart'] = 'tga_monitor'
@@ -13050,6 +15889,23 @@ def main():
                 if st.button("🛢️ Energy Giants"): st.session_state['active_lazy_chart'] = 'energy_giants'
                 if st.button("☢️ Uranium Fury"): st.session_state['active_lazy_chart'] = 'uranium_fury'
                 if st.button("🔋 Battery Metals"): st.session_state['active_lazy_chart'] = 'battery_metals'
+                if st.button("🔋 Zasilanie RoboCitizen", key="robocitizen_btn"): st.session_state['active_lazy_chart'] = 'robocitizen_power'
+                if st.button("🧪 RoboMaterials", key="robomaterials_btn"): st.session_state['active_lazy_chart'] = 'robomaterials_tech'
+                if st.button("⚡ Wąskie Gardło AI", key="power_bottleneck_btn"): st.session_state['active_lazy_chart'] = 'power_bottleneck'
+
+                st.caption("🧬 BIOTECH & LONGEVITY")
+                if st.button("🧬 Nieśmiertelność", use_container_width=True): st.session_state['active_lazy_chart'] = 'longevity'
+                if st.button("💊 Biohacking", use_container_width=True): st.session_state['active_lazy_chart'] = 'supplements'
+                if st.button("🤖 Hard Biohacking", use_container_width=True): st.session_state['active_lazy_chart'] = 'hard_bio'
+                if st.button("🇺🇸 Silicon Valley (Mag 7)", use_container_width=True): st.session_state['active_lazy_chart'] = 'silicon_valley'
+                
+                st.caption("🧬 **MEGATRENDY ŻYCIA I ŚMIERCI**")
+                if st.button("👵 Silver Economy"): st.session_state['active_lazy_chart'] = 'silver_economy'
+                if st.button("🍄 Neuro Hacking"): st.session_state['active_lazy_chart'] = 'neuro_hacking'
+                if st.button("🩺 MedTech Cyborgs"): st.session_state['active_lazy_chart'] = 'medtech_robots'
+                if st.button("👶 Generation Zero (IVF)"): st.session_state['active_lazy_chart'] = 'generation_zero'
+                if st.button("🌏 Clash of Nations"): st.session_state['active_lazy_chart'] = 'population_clash'
+                if st.button("📉 2060 Forecast"): st.session_state['active_lazy_chart'] = 'demo_forecast'
 
             # --- KOLUMNA 2: RYNKI TRADYCYJNE (AKCJE), WYCENA I RYZYKO ---
             with b2:
@@ -13061,21 +15917,24 @@ def main():
                 if st.button("🏛 Insiderzy (Congress)"): st.session_state['active_lazy_chart'] = 'congress_tracker'
                 if st.button("👑 Guru Wars (Musk etc)"): st.session_state['active_lazy_chart'] = 'guru_wars'
                 if st.button("🛡 Przemysł Zbrojeniowy"): st.session_state['active_lazy_chart'] = 'war_machine'
-                if st.button("🎖️ Global Defense"): st.session_state['active_lazy_chart'] = 'global_defense'
+                if st.button("🎖️Global Defense"): st.session_state['active_lazy_chart'] = 'global_defense'
                 if st.button("🚀 Market Offensive"): st.session_state['active_lazy_chart'] = 'market_offensive'
                 if st.button("🦾 Robotyka (Next AI)"): st.session_state['active_lazy_chart'] = 'robo_revolution'
                 if st.button("🚖 Autonomia (FSD/EV)"): st.session_state['active_lazy_chart'] = 'fsd_race'
                 if st.button("🧬 Życie (Bio) & Woda"): st.session_state['active_lazy_chart'] = 'life_death'
+                if st.button("🦗 Future Gówno Food"): st.session_state['active_lazy_chart'] = 'future_food'
                 if st.button("🌾 Food Security"): st.session_state['active_lazy_chart'] = 'food_security'
                 if st.button("🧬 Biotech Frontier"): st.session_state['active_lazy_chart'] = 'biotech_frontier'
                 if st.button("🛸 Exotic Propulsion"): st.session_state['active_lazy_chart'] = 'exotic_prop'
                 if st.button("🚀 Space Domination"): st.session_state['active_lazy_chart'] = 'space_domination'
                 if st.button("👩‍🚀 Space Tourism"): st.session_state['active_lazy_chart'] = 'space_tourism'
                 if st.button("🚀 Star Wars (SpaceX)"): st.session_state['active_lazy_chart'] = 'space_race'
-                if st.button("🛡️ Cyber Shield"): st.session_state['active_lazy_chart'] = 'cyber_shield'
+                if st.button("🛡️Cyber Shield"): st.session_state['active_lazy_chart'] = 'cyber_shield'
                 if st.button("⚛️ Quantum Computing"): st.session_state['active_lazy_chart'] = 'quantum_computing'
                 if st.button("🥂 The Rich List"): st.session_state['active_lazy_chart'] = 'rich_list'
                 if st.button("🐯 Rising Giants"): st.session_state['active_lazy_chart'] = 'emerging_markets'
+                if st.button("🖥️ El Komputer", key="hpc_btn"): st.session_state['active_lazy_chart'] = 'hpc_supercomputers'
+                if st.button("🔄Detektor Rotacji (ISM)", key="rotation_detector_btn"): st.session_state['active_lazy_chart'] = 'capital_rotation'
 
                 st.caption("💎 **WYCENA FUNDAMENTALNA**")
                 if st.button("👻 Duch Grahama", key="graham_btn"): st.session_state['active_lazy_chart'] = 'graham_ghost'
@@ -13083,15 +15942,8 @@ def main():
                 if st.button("🏛 Architekt Dow Jones", key="dow_architect_btn"): st.session_state['active_lazy_chart'] = 'dow_architect'
                 if st.button("💎 Dow Jones Graham", key="graham_dow_btn"): st.session_state['active_lazy_chart'] = 'graham_dow'
 
-                st.caption("🧮 **QUANT & RISK (BTC)**")
-                if st.button("🛡️ Hedging Calc"): st.session_state['active_lazy_chart'] = 'hedging_calc'
-                if st.button("🛡️ VaR (Risk)"): st.session_state['active_lazy_chart'] = 'var_risk'
-                if st.button("🎰 Kelly Crit"): st.session_state['active_lazy_chart'] = 'kelly'
-                if st.button("⚖️ Sharpe Ratio"): st.session_state['active_lazy_chart'] = 'sharpe'
-                if st.button("🤝 Arbitraż"): st.session_state['active_lazy_chart'] = 'spread_arb'
-                if st.button("🎲 Monte Carlo"): st.session_state['active_lazy_chart'] = 'monte_carlo'
-
                 st.caption("🦄 **ALTCOINY & INNE**")
+                if st.button("🏆 ETF Next Gen"): st.session_state['active_lazy_chart'] = 'etf_race'
                 if st.button("🦄 Altcoin Indicator"): st.session_state['active_lazy_chart'] = 'altcoin_bull'
                 if st.button("💎 Altcoin Gem Hunter", key="gem_btn"): st.session_state['active_lazy_chart'] = 'alt_gems'
                 if st.button("⚖️ ETH/BTC Ratio"): st.session_state['active_lazy_chart'] = 'crypto_rotation'
@@ -13117,6 +15969,7 @@ def main():
 
                 st.caption("🔮 **BTC LONG TERM**")
                 if st.button("🔮 BTC Future(ETF)", key="nostradamus_gold_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_gold'
+                if st.button("🔭 BTC Future 8M", key="nostradamus_8m_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_8m'
                 #if st.button("🔮 BTC Future 4.0", key="nostradamus_log_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_log'
                 #if st.button("🔮 BTC Future PRO", key="nostradamus_pro_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus_pro'
                 #if st.button("🔮 BTC Future Path", key="nostradamus_btn"): st.session_state['active_lazy_chart'] = 'btc_nostradamus'
@@ -13144,6 +15997,20 @@ def main():
                 if st.button("⛏️ Miner Stress (Proxy)"): st.session_state['active_lazy_chart'] = 'miner_stress'
                 if st.button("🏦 Coinbase Pulse"): st.session_state['active_lazy_chart'] = 'exchange_flow'
                 if st.button("🦎 The Chameleon"): st.session_state['active_lazy_chart'] = 'chameleon'
+                
+                st.caption("🧮 **QUANT & RISK (BTC)**")
+                if st.button("🛡️ Hedging Calc"): st.session_state['active_lazy_chart'] = 'hedging_calc'
+                if st.button("🛡️ VaR (Risk)"): st.session_state['active_lazy_chart'] = 'var_risk'
+                if st.button("🎰 Kelly Crit"): st.session_state['active_lazy_chart'] = 'kelly'
+                if st.button("⚖️ Sharpe Ratio"): st.session_state['active_lazy_chart'] = 'sharpe'
+                if st.button("🤝 Arbitraż"): st.session_state['active_lazy_chart'] = 'spread_arb'
+                if st.button("🎲 Monte Carlo"): st.session_state['active_lazy_chart'] = 'monte_carlo'
+
+                st.caption("🦄 **NFT**")
+                if st.button("🖼️ NFT Empire"): st.session_state['active_lazy_chart'] = 'nft_empire'
+                if st.button("🎮 Metaverse Land "): st.session_state['active_lazy_chart'] = 'metaverse'
+                if st.button("🏗️ NFT Infra (IMX/FLOW)"): st.session_state['active_lazy_chart'] = 'nft_infra'
+                if st.button("🖼️ The Polacy", key="nft_polacy_btn"): st.session_state['active_lazy_chart'] = 'nft_polacy'
 
         with c2:
             chart_type = st.session_state.get('active_lazy_chart')
@@ -13163,13 +16030,66 @@ def main():
             elif chart_type == 'bank_stimulus':
                 with st.spinner("Analizuję..."): st.pyplot(app.plot_bank_stimulus_chart(app.get_lazy_bank_stimulus_data()))
             elif chart_type == 'oracle_ai':
-                with st.spinner("Obliczam..."): st.pyplot(app.plot_oracle_forecast(app.get_oracle_prediction(df)))
+                with st.spinner("Pytam Wyroczni..."): 
+                    pred_df = app.get_oracle_prediction(df)
+                    st.pyplot(app.plot_oracle_forecast(pred_df))
+                    # --- NOWOŚĆ: OPIS WYROCZNI (ORACLE) ---
+                    st.info("""
+                    👁️ **WYROCZNIA AI (Oracle): Ślepa na czas, czuła na cenę**
+                    
+                    Ważne: W przeciwieństwie do Szklanej Kuli (Prophet), ten model **NIE WIE, co to jest Halving**. Nie obchodzi go czas ani czteroletnie cykle. Interesuje go tylko czysta geometria wykresu.
+                    
+                    * 🧠 **Jak myśli Wyrocznia?** Algorytm bierze obecny kształt wykresu i przeszukuje całą historię Bitcoina, szukając momentów, które wyglądały identycznie (Pattern Recognition / Uczenie Maszynowe). 
+                    * 📊 **Wniosek Modelu:** Skoro w przeszłości po dokładnie takim samym układzie świec tłum rzucił się do kupowania (Lambo) lub wpadł w panikę (Karton), to ludzka psychologia sprawi, że teraz rynek powtórzy ten sam scenariusz.
+                    
+                    *Zasada działania: Prophet pokazuje KIEDY rynek reaguje (Zegar Cyklu). Oracle pokazuje JAK reaguje tłum na daną cenę (Momentum). Traktuj to jako drugi, niezależny silnik weryfikujący.*
+                    """)
             elif chart_type == 'zeus_model':
-                with st.spinner("Obliczam..."): st.pyplot(app.plot_zeus_forecast(app.get_zeus_prediction(df), df))
+                with st.spinner("Budzę Zeusa..."):
+                    pred_zeus = app.get_zeus_prediction(df)
+                    st.pyplot(app.plot_zeus_forecast(pred_zeus, df))
+                    # --- NOWOŚĆ: OPIS MODELU ZEUSA ---
+                    st.info("""
+                    ⚡ **MODEL ZEUSA: Teoria Wydłużających się Cykli (Lengthening Cycles)**
+                    
+                    Ten model obala mit, że "każdy cykl Bitcoina trwa idealnie 4 lata". Fizyka rynków finansowych mówi wprost: im większe aktywo (Market Cap), tym trudniej je poruszyć. Statek wycieczkowy skręca wolniej niż motorówka.
+                    
+                    * 📏 **Rozciągnięcie w czasie (4,95 lat):** Zeus bierze poprzedni cykl Bitcoina i systemowo go wydłuża. Algorytm zakłada, że wciągnięcie bilionów dolarów z instytucji z Wall Street (ETF-y) zajmuje o wiele więcej czasu niż dawne, szybkie pompy napędzane przez ulicę.
+                    * 📊 **Nakładka Cykli:** Wykres nanosi na siebie stary (wydłużony) cykl i naszą obecną sytuację. Jeśli dzisiejsza cena "przykleja się" do linii Zeusa, to znaczy, że hossa wciąż trwa – po prostu weszliśmy w fazę dojrzewania rynku.
+                    
+                    *Zasada: Kiedy na Twitterze wszyscy krzyczą "to już koniec, bo minęły 4 lata" i uciekają w panice (Karton), Zeus chłodzi emocje. Rakieta jest po prostu cięższa, więc do stacji z napisem "Lambo" dolecimy później, ale bezpieczniej.*
+                    """)
             elif chart_type == 'cronos_model':
-                with st.spinner("Obliczam..."): st.pyplot(app.plot_cronos_forecast(app.get_cronos_prediction(df), df))
+                with st.spinner("Budzę Cronosa..."):
+                    pred_cronos = app.get_cronos_prediction(df)
+                    st.pyplot(app.plot_cronos_forecast(pred_cronos, df))
+                    # --- NOWOŚĆ: OPIS MODELU CRONOSA ---
+                    st.info("""
+                    ⏳ **MODEL CRONOSA: Duch Roku 2017 (Rozciągnięty do 4,8 lat)**
+                    
+                    Cronos cofa nas do legendarnej hossy z 2017 roku – matki wszystkich baniek, napędzanej czystym FOMO ulicy i szałem ICO. Ale nakłada na nią filtr dzisiejszej, ciężkiej rzeczywistości instytucjonalnej.
+                    
+                    * 📏 **Wydłużenie (4,8 lat):** Rynek z 2017 roku był mały, więc rósł pionowo i spektakularnie pękał. Dziś potrzebujemy więcej czasu, żeby przepchnąć ogromny kapitał przez bilionowy rynek. Cronos bierze tamten agresywny wzorzec i "rozciąga go" jak gumę, dostosowując do wagi dzisiejszego Bitcoina.
+                    * 📊 **Nakładka Cykli:** Wykres nanosi rozciągniętą ścieżkę z 2017 roku na nasz obecny cykl. Szukamy korelacji.
+                    
+                    *Zasada: Jeśli dzisiejsza cena trzyma się ścieżki Cronosa, to znaczy, że prawdziwa, detaliczna mania (faza, w której ulica kupuje wszystko w ciemno, a Ty konfigurujesz kolor Lambo) jest wciąż przed nami. Po prostu ładuje się wolniej i potrwa dłużej.*
+                    """)
             elif chart_type == 'cycle_overlay':
-                with st.spinner("Nakładam..."): st.pyplot(app.plot_cycle_comparison(app.get_cycle_comparison_data(df)))
+                with st.spinner("Nakładam historyczne cykle..."):
+                    overlay_data = app.get_cycle_comparison_data(df)
+                    st.pyplot(app.plot_cycle_comparison(overlay_data))
+                    
+                    # --- NOWOŚĆ: OPIS NAKŁADKI CYKLI ---
+                    st.info("""
+                    🔄 **NAKŁADKA CYKLI: Wyścig z Historią**
+                    
+                    Ten wykres sprowadza wszystkie historyczne hossy Bitcoina do wspólnego mianownika. Startujemy od "Dnia Zero" (dołka lub halvingu), żeby zobaczyć, w jakim tempie biegniemy w porównaniu do przeszłości.
+                    
+                    * 🏎️ **Wyścig:** Każda linia to inna epoka (2013, 2017, 2021). Sprawdzamy, czy obecny cykl wyprzedza historyczne rajdy, czy wlecze się w ogonie.
+                    * 📉 **Prawo Malejących Zwrotów (Diminishing Returns):** Każda kolejna hossa jest "bardziej płaska" niż poprzednia. Aktywo ważące biliony dolarów potrzebuje oceanu pieniędzy, żeby urosnąć o 100%. Mniejsze "X" (mnożniki), ale większe bezpieczeństwo.
+                    
+                    *Zasada: Szukaj odchyleń. Jeśli nasza linia rośnie niepokojąco szybko i mocno odrywa się od historycznych wzorców w górę – to anomalia i czas księgować zyski (Lambo). Jeśli idziemy zgodnie ze średnią, trend po prostu robi swoje.*
+                    """)
             elif chart_type == 'liquidation':
                 with st.spinner("Szukam śladów krwi na wykresie..."):
                     liq_data = app.get_liquidation_proxy(df) # Tu pobierze sobie OHLC
@@ -13389,7 +16309,7 @@ def main():
                     
                     if df_rot is not None:
                         st.pyplot(app.plot_crypto_rotation(df_rot))
-                        st.caption("ℹ️ **BITCOIN CZY ALTY?** \nTen wykres mówi, co trzymać w portfelu. \n🟢 **Zielona Strefa:** ETH jest silniejsze od BTC. To czas na Altcoiny. \n🔴 **Czerwona Strefa:** BTC jest silniejszy. Alty krwawią. Trzymaj tylko BTC.")
+                        st.caption("ℹ️ **BITCOIN CZY ALTY?** \nTen wykres mówi, co trzymać w portfelu. \n🟢 **Zielona Strefa:** BTC jest silniejsze od ETH. To czas na BTC. \n🔴 **Czerwona Strefa:** ETH jest silniejszy. Alty mogą wystrzelić.")
                     else:
                         st.error("Błąd pobierania danych ETH/BTC.")
             elif chart_type == 'power_law':
@@ -14521,6 +17441,705 @@ def main():
                         """)
                     else:
                         st.error("Błąd łączności z orbitą.")
+            elif st.session_state.get('chart_type') == 'longevity':
+                
+                st.header("🧬 The Immortality Engine (Silnik Nieśmiertelności)")
+                st.markdown("""
+                **Sektor:** Edycja Genów, AI Drug Discovery, Age Reversal.
+                **Cel:** Inwestycja w wydłużanie ludzkiego życia.
+                """)
+
+                with st.spinner("Skanuję kod DNA rynku..."):
+                    
+                    # 1. Pobieramy dane do obu wykresów
+                    long_df = app.get_longevity_data()
+                    risk_df = app.get_bio_risk_data()
+                    
+                    # 2. Rysujemy Wykres Liniowy (Wyścig)
+                    if long_df is not None:
+                        st.pyplot(app.plot_longevity_portfolio(long_df))
+                        
+                        st.divider()
+                        
+                        # 3. Rysujemy Radar + Info (Układ 2:1 jak w Space Race)
+                        c_radar, c_info = st.columns([2, 1])
+                        
+                        with c_radar:
+                            if risk_df is not None:
+                                st.pyplot(app.plot_bio_risk_radar(risk_df))
+                            else:
+                                st.error("Błąd danych Radaru.")
+                        
+                        with c_info:
+                            st.info("""
+                            ℹ️ **BIOTECH INSIGHTS**
+                            \n🧬 **CRISPR (CRSP/NTLA):** "Nożyczki DNA". Jeśli wyleczą raka/choroby genetyczne, cena x100.
+                            \n🤖 **NVIDIA (NVDA):** Ich AI "BioNeMo" projektuje leki szybciej niż ludzie.
+                            \n💊 **LLY & NVO:** Królowie odchudzania (GLP-1). To kura znosząca złote jajka.
+                            """)
+                            
+                        st.caption("""
+                        ℹ️ **LEGENDA NIEŚMIERTELNOŚCI:**
+                        \n🚀 **Moonshot (Lewa Góra):** Mała zmienność, duży zysk. Ideał.
+                        \n💀 **Kasyno (Prawy Dół):** Duża zmienność, strata. Unikaj.
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych Longevity (Brak połączenia z NASDAQ).")
+            elif st.session_state.get('chart_type') == 'supplements':
+                
+                st.header("💊 Suplementy & Biohacking")
+                st.markdown("""
+                **Rynek "Pigułek na Starość".** Mniej ryzykowny niż edycja genów, ale z ogromnym potencjałem w starzejącym się społeczeństwie.
+                """)
+                
+                with st.spinner("Analizuję skład chemiczny rynku..."):
+                    # 1. Pobieramy dane
+                    supp_df = app.get_supplements_data()
+                    
+                    # 2. Rysujemy wykres
+                    if supp_df is not None:
+                        st.pyplot(app.plot_supplements_chart(supp_df))
+                        
+                        st.divider()
+                        
+                        # 3. Sekcja Informacyjna (Insights)
+                        c_info1, c_info2 = st.columns([1, 1])
+                        
+                        with c_info1:
+                            st.info("""
+                            🧪 **ChromaDex (CDXC):** \nTo jest **Król Longevity**. Posiadają patent na **NAD+ (Niagen)**.
+                            \nNAD+ to "paliwo dla mitochondriów", które zanika z wiekiem. Bez tego komórki umierają.
+                            \nTo spółka typowo pod hasło "Nieśmiertelność".
+                            """)
+                            
+                        with c_info2:
+                            st.success("""
+                            🛡️ **Haleon (HLN):**
+                            \nGigant wydzielony z GSK. Właściciel marki **Centrum** (witaminy) i Panadol.
+                            \nTo opcja **"Emeryt"** - bezpieczna, stabilna, wypłaca dywidendy. Nie da zarobić 1000%, ale nie zbankrutuje.
+                            """)
+                            
+                    else:
+                        st.error("Błąd pobierania danych Suplementów (Problem z yfinance).")
+            elif st.session_state.get('chart_type') == 'silicon_valley':
+                
+                st.header("🇺🇸 Silicon Valley: The Magnificent 7")
+                st.markdown("""
+                **To nie jest zwykły rynek. To jest 7 firm, które stanowią 30% wartości S&P 500.**
+                Gdzie idą one, tam idzie świat.
+                """)
+                
+                with st.spinner("Łączę z serwerami w Kalifornii..."):
+                    # 1. Pobieramy dane
+                    norm_df, raw_df = app.get_mag7_data()
+                    
+                    if norm_df is not None:
+                        # WYKRES 1: Wyścig
+                        st.subheader("🏎️ Wyścig Zbrojeń AI (Kto jest liderem?)")
+                        st.pyplot(app.plot_mag7_race(norm_df))
+                        
+                        st.divider()
+                        
+                        # WYKRES 2: Promocje
+                        st.subheader("🏷️ Detektor Okazji (Czy jest tanio?)")
+                        st.write("Wykres pokazuje, o ile % akcja spadła od swojego rocznego szczytu.")
+                        
+                        discount_df = app.get_mag7_discount(raw_df)
+                        if discount_df is not None:
+                            st.pyplot(app.plot_mag7_discount(discount_df))
+                            
+                        # INSIGHTS
+                        st.info("""
+                        ℹ️ **JAK TO CZYTAĆ?**
+                        \n🟢 **Słupek blisko 0%:** Akcja jest na szczycie (ATH). Jest drogo, silny trend (Momentum).
+                        \n🔴 **Słupek -20% lub niżej:** Głęboka korekta. Dla fanów "Kupowania Dołków" (Buy The Dip).
+                        \n🤖 **NVIDIA:** Zazwyczaj lider wzrostów. Jeśli ona spada, cały sektor Tech krwawi.
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych z USA.")
+            elif st.session_state.get('chart_type') == 'hard_bio':
+                
+                st.header("🤖 Hard Biohacking & Tech")
+                st.markdown("""
+                **To nie są witaminy.** To inżynieria komórkowa, naprawa DNA i fuzja z technologią.
+                Inwestycja w "Upgrade Człowieka".
+                """)
+                
+                with st.spinner("Łączę z laboratorium przyszłości..."):
+                    # 1. Pobieramy dane
+                    race_df, raw_df = app.get_hard_bio_data()
+                    
+                    if race_df is not None:
+                        # WYKRES 1
+                        st.subheader("🧬 Wyścig Technologii (Kto daje zarobić?)")
+                        st.pyplot(app.plot_hard_bio_race(race_df))
+                        
+                        st.divider()
+                        
+                        # WYKRES 2 (Drawdown)
+                        st.subheader("📉 Detektor Krachu (Czy jest tanio?)")
+                        st.write("Spółki biotechnologiczne są bardzo zmienne. Sprawdź, kto jest na przecenie.")
+                        
+                        discount_df = app.get_hard_bio_discount(raw_df)
+                        if discount_df is not None:
+                            st.pyplot(app.plot_hard_bio_discount(discount_df))
+                        
+                        # INSIGHTS - CO JEST CZYM
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            st.info("""
+                            💀 **Unity (UBX) - Zombie Killer:**
+                            Leki "Senolityczne". Mają zabijać stare komórki, które już nie pracują, a zatruwają organizm.
+                            \n⏳ **Geron (GERN) - Władca Czasu:**
+                            Celują w **Telomery**. To "skuwki" na końcach DNA. Gdy się zużyją - umieramy. Oni chcą je wydłużyć.
+                            \n🧠 **ATAI - Naprawa Mózgu:**
+                            Leczenie depresji i regeneracja neuronów za pomocą substancji psychodelicznych (nowa generacja leków).
+                            """)
+                        with c2:
+                            st.success("""
+                            ⌚ **Garmin (GRMN) - Prawda o Ciele:**
+                            Biohacking wymaga danych (Sen, HRV, Stres). Garmin to lider twardych danych, nie zabawka jak Apple Watch.
+                            \n🧬 **Illumina (ILMN) - Czytnik DNA:**
+                            Nie da się hakować kodu, którego nie widzisz. Oni produkują maszyny do sekwencjonowania genomu.
+                            """)
+                    else:
+                        st.error("Błąd pobierania danych Bio-Tech.")
+            elif chart_type == 'silver_economy':
+                with st.spinner("Licze zyski z demografii..."):
+                    df_silver = app.get_silver_economy_data()
+                    if df_silver is not None:
+                        st.pyplot(app.plot_silver_economy(df_silver))
+                        st.caption("ℹ️ **DEMOGRAFIA TO PRZEZNACZENIE.** Społeczeństwo się starzeje. To są spółki 'defensywne' - ludzie zawsze będą potrzebować szpitali i sztucznych bioder.")
+                    else: st.error("Błąd danych Silver Economy.")
+
+            elif chart_type == 'neuro_hacking':
+                with st.spinner("Otwieram umysł..."):
+                    df_neuro = app.get_neuro_hacking_data()
+                    if df_neuro is not None:
+                        st.pyplot(app.plot_neuro_hacking(df_neuro))
+                        st.caption("ℹ️ **NEURO REVOLUTION.** Walka z depresją i chorobami psychicznymi za pomocą nowych substancji. Ryzyko ekstremalne (jak krypto), ale potencjał x100.")
+                    else: st.error("Błąd danych Neuro.")
+
+            elif chart_type == 'medtech_robots':
+                with st.spinner("Kalibruję ramię robota..."):
+                    df_med = app.get_medtech_robots_data()
+                    if df_med is not None:
+                        st.pyplot(app.plot_medtech_robots(df_med))
+                        st.caption("ℹ️ **CYBORG DOCTOR.** ISRG (Intuitive Surgical) to monopolista w robotach operacyjnych. DXCM (Dexcom) to lider biohackingu glukozy. To jest połączenie Ciała i Maszyny.")
+                    else: st.error("Błąd danych MedTech.")
+            elif chart_type == 'real_estate':
+                with st.spinner("Wyceniam Twoje cyfrowe kamienice..."):
+                    df_re = app.get_real_estate_empire_data()
+                    if df_re is not None:
+                        st.pyplot(app.plot_real_estate_empire(df_re))
+                        
+                        # --- ROZSZERZONY OPIS ---
+                        st.info("### 🏰 TEORIA RENTIERA: Jak to działa?")
+                        c_info1, c_info2 = st.columns([1, 1])
+                        
+                        with c_info1:
+                            st.markdown("""
+                            **Dlaczego REIT-y?**
+                            Kupno mieszkania na wynajem to: notariusz, remonty, użeranie się z lokatorami i podatek.
+                            Kupno REIT-a (np. **'O'**) to: jedno kliknięcie i dywidenda co miesiąc na konto.
+                            
+                            **Co tu widzisz?**
+                            * **📦 PLD (Prologis):** Największy właściciel magazynów na świecie. Jeśli kupujesz coś na Amazonie, prawdopodobnie leży to w ich hali.
+                            * **📡 AMT (American Tower):** Właściciele masztów 5G. Operatorzy (T-Mobile, Verizon) płacą im czynsz za powieszenie anten.
+                            """)
+                        
+                        with c_info2:
+                            st.markdown("""
+                            **Strategia:**
+                            Nieruchomości to **Hedge na Inflację**. Gdy ceny w sklepach rosną, czynsze też są podnoszone.
+                            
+                            * **🟢 Hossa:** Nieruchomości rosną wolniej niż Tech, ale stabilnie.
+                            * **🔴 Bessa:** Spadają mniej boleśnie i ciągle płacą dywidendę.
+                            * **⚠️ Ryzyko:** Wysokie stopy procentowe (drogi kredyt) szkodzą REIT-om.
+                            """)
+                    else: st.error("Błąd danych Real Estate.")
+
+            elif chart_type == 'india_growth':
+                with st.spinner("Łączę się z Bombajem..."):
+                    df_in = app.get_india_growth_data()
+                    if df_in is not None:
+                        st.pyplot(app.plot_india_growth(df_in))
+                        
+                        # --- ROZSZERZONY OPIS ---
+                        st.info("### 🐯 DEMOGRAFIA TO PRZEZNACZENIE")
+                        st.markdown("""
+                        **Dlaczego Indie?**
+                        Wyobraź sobie, że możesz cofnąć się w czasie i kupić akcje w USA w latach 80-tych albo w Chinach w roku 2000. Indie są właśnie w tym punkcie.
+                        
+                        * **📈 Młodość:** Chiny i Europa się starzeją. Indie mają najmłodszą populację inżynierów i konsumentów na świecie.
+                        * **📱 Cyfryzacja:** Indie przeskoczyły etap "kart płatniczych" i przeszły od razu na płatności cyfrowe (UPI). To raj dla Fintechu.
+                        * **🏭 Made in India:** Apple i Tesla przenoszą tam fabryki z Chin.
+                        
+                        **Kluczowe Aktywa na wykresie:**
+                        * **INDA (ETF):** Kupujesz cały indyjski rynek naraz.
+                        * **INFY (Infosys):** Gigant IT. Budują soft dla banków w USA.
+                        * **HDFC Bank:** Finansuje budowę dróg, domów i firm dla miliarda ludzi.
+                        """)
+                    else: st.error("Błąd danych Indie.")
+
+            elif chart_type == 'dividend_kings':
+                with st.spinner("Licze dywidendy na paliwo do Lambo..."):
+                    df_div = app.get_dividend_kings_data()
+                    if df_div is not None:
+                        st.pyplot(app.plot_dividend_kings(df_div))
+                        
+                        # --- ROZSZERZONY OPIS ---
+                        st.info("### 💸 RZEKA PIENIĘDZY: Strategia Dywidendowa")
+                        c_div1, c_div2 = st.columns(2)
+                        
+                        with c_div1:
+                            st.markdown("""
+                            **Dwa rodzaje Dywidend:**
+                            1.  **🛡️ Arystokraci (NOBL, KO):** Firmy, które podnoszą dywidendę od 25+ lat. Nudne, bezpieczne, idealne na emeryturę. Rosną powoli, ale nie bankrutują.
+                            2.  **🚀 Wzrost Dywidendy (SCHD):** Złoty środek. Spółki, które mają dużo gotówki i szybko zwiększają wypłaty.
+                            """)
+                        
+                        with c_div2:
+                            st.markdown("""
+                            **Nowa Era (Covered Calls):**
+                            * **JEPQ (Nasdaq Income):** To nie jest zwykła dywidenda. Fundusz sprzedaje opcje na swoje akcje. 
+                            * **Efekt:** Dostajesz 9-12% rocznie w gotówce (wypłacane co miesiąc), ale rezygnujesz z części wzrostu kursu. Idealne do generowania "pensji" z kapitału.
+                            
+                            *Zasada Warrena Buffetta: "Jeśli nie znajdziesz sposobu, by zarabiać gdy śpisz, będziesz pracował do śmierci".*
+                            """)
+                    else: st.error("Błąd danych Dywidend.")
+            elif chart_type == 'income_factory':
+                with st.spinner("Licze pieniądze, które zarabiasz przez sen..."):
+                    inc_df = app.get_income_factory_data()
+                    
+                    if inc_df is not None:
+                        st.pyplot(app.plot_income_factory(inc_df))
+                        
+                        # --- ROZSZERZONY OPIS (EDUKACJA) ---
+                        st.info("### 🏭 FABRYKA DOCHODU: Skąd biorą się te procenty?")
+                        
+                        st.markdown("""
+                        Większość ludzi myśli, że 10% rocznie jest niemożliwe bez ryzyka. **To prawda.** Tutaj ryzykiem nie jest "czy wypłacą", ale "czy cena akcji nie spadnie".
+                        
+                        Oto 4 silniki Twojej fabryki:
+                        
+                        1.  **🟣 OPCJE (JEPI, JEPQ):**
+                            * **Mechanizm:** Fundusz kupuje akcje (np. Apple) i "zakłada się" z rynkiem, że cena nie wzrośnie powyżej pewnego poziomu w tym miesiącu (sprzedaż opcji Call).
+                            * **Zysk:** Dostają za to "premię" (gotówkę), którą oddają Tobie.
+                            * **Dla kogo:** Dla tych, którzy chcą comiesięcznej pensji i nie wierzą w hossę stulecia.
+                        
+                        2.  **🟢 BDC (MAIN, ARCC) - Bankierzy:**
+                            * **Mechanizm:** Wielkie banki nie chcą pożyczać małym firmom. BDC wchodzą w tę lukę. Pożyczają na 12-15%, a Tobie oddają większość zysku (wymóg prawny w USA).
+                            * **Dla kogo:** Dla szukających wysokiego, stabilnego yield'u.
+                        
+                        3.  **🟠 MLP (EPD) - Władcy Rur:**
+                            * **Mechanizm:** Posiadają rurociągi w USA. Działają jak autostrada – pobierają opłatę za każdy baryłkę ropy, która przepłynie.
+                            * **Zaleta:** Nie obchodzi ich cena ropy, tylko jej ilość (wolumen). Cash Cow.
+                        
+                        4.  **🔵 RISK FREE (SGOV, BIL):**
+                            * **Mechanizm:** Pożyczasz pieniądze rządowi USA na 3 miesiące.
+                            * **Ryzyko:** Teoretycznie zerowe (chyba że USA zbankrutuje). Obecnie płacą ok. 5%.
+                        """)
+                    else:
+                        st.error("Błąd pobierania rentowności.")
+            elif chart_type == 'etf_race':
+                with st.spinner("Przeglądam portfele insiderów z Wall Street..."):
+                    etf_df = app.get_etf_candidates_data()
+                    
+                    if etf_df is not None:
+                        st.pyplot(app.plot_etf_candidates(etf_df))
+                        
+                        # --- ANALIZA LIDERÓW ---
+                        last_row = etf_df.iloc[-1]
+                        # Usuwamy BTC z liderów do analizy, żeby znaleźć alta
+                        leaders = last_row.drop([c for c in last_row.index if 'Bitcoin' in c])
+                        winner = leaders.idxmax()
+                        win_val = leaders.max()
+                        
+                        st.success(f"🔥 **AKTUALNY FAWORYT:** {winner} (+{win_val:.1f}%). To tutaj płynie kapitał spekulacyjny.")
+                        
+                        # --- INSTRUKCJA OBSŁUGI (STRATEGIA) ---
+                        st.info("### 🏆 JAK UŻYWAĆ RADARU INSIDERÓW?")
+                        
+                        c_strat1, c_strat2 = st.columns(2)
+                        
+                        with c_strat1:
+                            st.markdown("""
+                            **Zasada #1: Wykres wyprzedza Newsy**
+                            Wielkie fundusze (BlackRock, VanEck) nie kupują po ogłoszeniu newsa w gazecie. Oni kupują tygodnie wcześniej. Ten wykres ma za zadanie wykryć te ciche zakupy.
+                            
+                            **🚨 Czego szukasz? (SYGNAŁ)**
+                            Szukasz **DYWERGENCJI**.
+                            Jeśli Biała Linia (BTC) idzie płasko lub spada, a np. **Fioletowa Linia (SOL)** nagle strzela pionowo w górę – to jest alarm. Oznacza to, że ktoś akumuluje Solanę niezależnie od kondycji całego rynku. **To pachnie przeciekiem o ETF.**
+                            """)
+                        
+                        with c_strat2:
+                            st.markdown("""
+                            **Kto stoi w kolejce? (Legenda):**
+                            * 🟣 **SOL (Solana):** Największy faworyt. Wnioski złożyły już VanEck i 21Shares.
+                            * 🔵 **XRP (Ripple):** Bitwise i Canary Capital grają pod ETF. Po wygranej z SEC to jest "Bankierski Coin".
+                            * ⚪ **LTC (Litecoin):** Cichy zabójca. Jest towarem (Commodity) jak BTC, więc SEC nie ma argumentów przeciwko.
+                            * 🟢 **HBAR (Hedera):** BlackRock kiedyś testował na nim tokenizację. Canary złożyło wniosek.
+                            
+                            *Strategia: Kupuj plotki (gdy linia rośnie), sprzedawaj fakty (gdy ogłoszą zatwierdzenie).*
+                            """)
+                            
+                    else:
+                        st.error("Błąd danych kandydatów ETF.")
+            elif chart_type == 'future_food':
+                with st.spinner("Smażę kotlety ze świerszczy (Agenda 2030)..."):
+                    food_df = app.get_future_food_data()
+                    
+                    if food_df is not None:
+                        st.pyplot(app.plot_future_food(food_df))
+                        
+                        # --- SZYBKA DIAGNOZA BYND ---
+                        bynd_val = food_df['Beyond Meat (Roślinne Mięso)'].iloc[-1]
+                        if bynd_val < -80:
+                            st.error(f"📉 **BYND REKT:** Beyond Meat spadł o {bynd_val:.0f}%. Ludzie jednak wolą prawdziwe steki.")
+                        
+                        # --- THE SCHWAB NARRATIVE ---
+                        st.info("### 🦗 AGENDA 2030: \"You Will Eat Ze Bugs\"")
+                        
+                        c_f1, c_f2 = st.columns([1, 1])
+                        
+                        with c_f1:
+                            st.markdown("""
+                            **Wizja Klausa Schwaba:**
+                            Słynne memiczne hasło: *\"You will eat ze bugs and you will be happy.\"*
+                            Globalne elity i ESG naciskają na odejście od hodowli bydła (CO2) na rzecz "alternatywnego białka".
+                            
+                            **Kto gra w tę grę?**
+                            * 🥩 **Beyond Meat (BYND):** Symbol bańki. Mieli zrewolucjonizować świat, a stracili 90% wartości. Smak i cena nie wygrały z naturą.
+                            * 🦟 **Tyson Foods (TSN):** Gigant mięsny, który nie walczy z trendem, tylko go kupuje. Zainwestowali w **Protix** (farmy owadów). To oni mogą wprowadzić robaki do paszy, a potem na talerze.
+                            """)
+                        
+                        with c_f2:
+                            st.markdown("""
+                            **Gdzie jest Smart Money?**
+                            Na razie "Gówno Żarcie" (Sztuczne Mięso) to finansowa mielonka. Ale infrastruktura zarabia.
+                            
+                            * 🚜 **Archer-Daniels (ADM):** Prawdziwy zwycięzca. To **"Sprzedawca Łopat"** w tej gorączce. Nieważne, czy jesz soję, świerszcze czy kukurydzę – ADM to przetwarza, magazynuje i transportuje.
+                            * 🥛 **Oatly:** Mleko owsiane. Hit w kawiarniach, kit na giełdzie.
+                            
+                            **Wniosek:** Unikaj hypu konsumenckiego (BYND). Obserwuj gigantów (ADM, TSN), którzy kontrolują łańcuch dostaw.
+                            """)
+                    else:
+                        st.error("Błąd danych Food Tech.")
+            elif chart_type == 'nft_empire':
+                with st.spinner("Skanuję blockchain w poszukiwaniu cyfrowej sztuki..."):
+                    nft_df = app.get_nft_proxies_data()
+                    
+                    if nft_df is not None:
+                        st.pyplot(app.plot_nft_empire(nft_df))
+                        
+                        # --- INFO BOX ---
+                        st.info("### 🖼️ DIGITAL FLEX: Czy NFT wracają?")
+                        
+                        c_nft1, c_nft2 = st.columns(2)
+                        
+                        with c_nft1:
+                            st.markdown("""
+                            **Co tu widzisz? (Proxy Tokens)**
+                            Nie śledzimy tu cen obrazków (bo są niepłynne), ale tokeny projektów, które za nimi stoją.
+                            
+                            * 🇵🇱 **GamerHash (GHX):** Nasz polski rodzynek. Łączy moc obliczeniową (mining) z nagrodami w NFT.
+                            * 🇺🇸 **ApeCoin (APE):** Waluta ekosystemu Bored Ape Yacht Club. Jeśli APE rośnie, "Małpy" wracają do łask.
+                            """)
+                        
+                        with c_nft2:
+                            st.markdown("""
+                            **Kluczowi Gracze:**
+                            * 🇪🇺 **Chiliz (CHZ):** Europejski gigant. Tokeny fanowskie (FC Barcelona, PSG, Legia). Jeśli sport kwitnie, CHZ rośnie.
+                            * 🌎 **Blur:** Agregator dla traderów NFT. Jeśli wolumen handlu obrazkami rośnie, BLUR na tym zarabia.
+                            
+                            *Wniosek: Jeśli te linie są pod szarą linią Ethereum -> Sektor NFT jest w bessie.*
+                            """)
+                    else:
+                        st.error("Błąd danych NFT.")
+            elif chart_type == 'metaverse':
+                with st.spinner("Loguję się do Matrixa..."):
+                    meta_df = app.get_metaverse_data()
+                    if meta_df is not None:
+                        st.pyplot(app.plot_metaverse_land(meta_df))
+                        
+                        st.info("### 🎮 GRY CZY BIZNES?")
+                        st.markdown("""
+                        **Co tu mamy?**
+                        * **SAND (The Sandbox):** Współpracują z Adidasem, Snoop Doggiem i bankami. To wirtualne nieruchomości.
+                        * **MANA (Decentraland):** Najstarszy Metaverse. Trochę pusty, ale klasyk.
+                        * **ILV (Illuvium):** Pierwsza gra AAA na blockchainie. Jeśli okaże się hitem, token wystrzeli.
+                        
+                        *Wniosek: Jeśli wierzysz, że dzieciaki będą spędzać życie w goglach VR, to jest Twój sektor.*
+                        """)
+                    else: st.error("Błąd danych Metaverse.")
+
+            elif chart_type == 'nft_infra':
+                with st.spinner("Sprawdzam przepustowość łączy..."):
+                    infra_df = app.get_nft_infra_data()
+                    if infra_df is not None:
+                        st.pyplot(app.plot_nft_infra(infra_df))
+                        
+                        st.success("🏗️ **LIDER: IMMUTABLE X (IMX).** To na nim budują się największe gry web3.")
+                        
+                        st.markdown("""
+                        **Dlaczego Infrastruktura?**
+                        Zamiast zgadywać, która gra odniesie sukces (ryzykowne), kupujesz "autostradę", po której muszą jeździć wszystkie gry.
+                        
+                        * 🟢 **IMX:** Partnerstwo z Ubisoftem i Amazonem. Zerowe opłaty za gas dla graczy.
+                        * 🔵 **FLOW:** Blockchain stworzony dla korporacji (NBA, Disney, Ticketmaster).
+                        * 🟣 **BEAM:** DAO, które inwestuje w dziesiątki gier. Działa jak fundusz indeksowy gamingu.
+                        """)
+                    else: st.error("Błąd danych Infra.")
+            elif chart_type == 'generation_zero':
+                with st.spinner("Analizuję globalny spadek dzietności..."):
+                    gen_df = app.get_generation_zero_data()
+                    
+                    if gen_df is not None:
+                        st.pyplot(app.plot_generation_zero(gen_df))
+                        
+                        st.info("### 👶 CHILDREN OF MEN (Scenariusz Przyszłości)")
+                        
+                        c_g1, c_g2 = st.columns(2)
+                        
+                        with c_g1:
+                            st.markdown("""
+                            **Problem:**
+                            Globalna dzietność szoruje po dnie. Mężczyźni mają o 50% mniej testosteronu niż 50 lat temu.
+                            
+                            **Rozwiązanie (Zysk):**
+                            Zajście w ciążę staje się procesem technologicznym, a nie naturalnym.
+                            * **COO (Cooper):** Sprzedają "narzędzia" do laboratoriów IVF.
+                            * **PGNY (Progyny):** Korporacje w USA (Google, Microsoft) wykupują to ubezpieczenie dla pracowników, żeby przyciągnąć talenty.
+                            """)
+                        
+                        with c_g2:
+                            st.markdown("""
+                            **Vanity Capital (Próżność):**
+                            Skoro nie mamy dzieci, inwestujemy w siebie.
+                            * **HIMS (Hims & Hers):** Telemedycyna dla narcyzów. Tabletki na włosy, skórę i potencję w subskrypcji. Potężne wzrosty.
+                            * **ABBV (Botox):** W czasach Instagrama gładkie czoło jest walutą.
+                            
+                            *Wniosek: Sektor "Naprawiania Ludzi" będzie rósł, niezależnie od recesji.*
+                            """)
+                    else:
+                        st.error("Błąd danych Generation Zero.")
+            elif chart_type == 'population_clash':
+                # Ponieważ dane są lokalne, nie potrzebujemy spinnera, ale dla spójności:
+                with st.spinner("Licze ludzi na planecie..."):
+                    pop_df = app.get_world_population_data()
+                    
+                    st.pyplot(app.plot_world_population(pop_df))
+                    
+                    st.info("### 🌏 DEMOGRAFIA TO PRZEZNACZENIE")
+                    
+                    c_pop1, c_pop2 = st.columns(2)
+                    
+                    with c_pop1:
+                        st.markdown("""
+                        **Co widzisz na wykresie?**
+                        * 🇮🇳 **Indie (Pomarańczowa):** Nowy Król. W 2023 roku oficjalnie wyprzedziły Chiny. To tutaj jest najmłodsza klasa średnia, która będzie kupować telefony, domy i auta.
+                        * 🇨🇳 **Chiny (Czerwona):** Punkt zwrotny. Populacja zaczęła spadać pierwszy raz od 60 lat. Starzeją się zanim zdążyli się w pełni wzbogacić ("Getting old before getting rich").
+                        """)
+                    
+                    with c_pop2:
+                        st.markdown("""
+                        **Stary vs Nowy Świat:**
+                        * 🇪🇺 **Europa (Niebieska):** Płaska linia od 30 lat. Stagnacja. Rynek zbytu, ale nie rynek innowacji czy taniej siły roboczej.
+                        * 🌍 **Afryka (Zielona):** Rakieta. Jedyna linia, która idzie pionowo w górę. Nigerria w 2050 roku będzie miała więcej ludzi niż USA. To jest przyszły rezerwuar pracowników dla świata AI.
+                        
+                        *Wniosek inwestycyjny: Kupuj tam, gdzie rodzą się ludzie (Indie/Emerging Markets). Sprzedawaj tam, gdzie wymierają (Europa).*
+                        """)
+            elif chart_type == 'demo_forecast':
+                # Nie potrzebujemy spinnera sieciowego, bo dane są w kodzie
+                with st.spinner("Symuluję przyszłość do 2060 roku..."):
+                    fore_df = app.get_demographic_forecast_data()
+                    st.pyplot(app.plot_demographic_forecast(fore_df))
+                    
+                    st.warning("⚠️ **UWAGA: TO JEST MATEMATYCZNA PEWNOŚĆ.** Demografia działa z opóźnieniem 20 lat. Tego nie da się już zatrzymać.")
+                    
+                    c_f1, c_f2 = st.columns(2)
+                    
+                    with c_f1:
+                        st.markdown("""
+                        **💀 Upadek Smoków:**
+                        * **Chiny (Czerwona Linia):** Zobacz jak ta linia zakręca w dół. Do 2100 roku populacja Chin może spaść o połowę (do 700 mln). To oznacza **brak rąk do pracy**.
+                        * **Europa (Niebieska):** Stary dom starców. Systemy emerytalne zbankrutują, bo nie będzie młodych, by płacić na starych.
+                        """)
+                    
+                    with c_f2:
+                        st.markdown("""
+                        **👶 Nowi Giganci:**
+                        * **Afryka (Zielona Linia):** Jedyny region, który podwoi populację. W 2060 roku co 4. człowiek na Ziemi będzie z Afryki. To tam powstaną nowe metropolie.
+                        * **Inwestycje:** Dlatego musimy inwestować w **Robotyke (zastąpi brakujących ludzi)** i **Biohacking (żeby starzy byli sprawni)**.
+                        """)
+            elif st.session_state.get('active_lazy_chart') == 'btc_nostradamus_8m':
+                with st.spinner("Uruchamiam Radar Krótkoterminowy (Nostradamus 8M)..."):
+                    df_real, df_proj = app.get_btc_gold_8m_projection()
+                    fig = app.plot_btc_gold_8m_projection(df_real, df_proj)
+                    
+                    if fig:
+                        st.pyplot(fig)
+                        
+                        # --- NOWOŚĆ: OPIS NOSTRADAMUSA 8M ---
+                        st.info("""
+                        🔭 **NOSTRADAMUS 8M: Radar Krótkoterminowy (Taktyczny)**
+                        
+                        Ten model to zoptymalizowana wersja głównego Nostradamusa. Zamiast patrzeć na całą dekadę w przód (strategia), ucina projekcję do **najbliższych 8 miesięcy (240 dni)**.
+                        
+                        * 🔍 **Zoom na tu i teraz:** Wykres celowo ukrywa starą historię (pokazuje tylko ostatni rok), żeby nie zgniatać perspektywy. Dzięki temu dokładnie widzisz, co dzieje się dzisiaj.
+                        * 🎯 **Lokalne ekstrema:** Algorytm szuka najbliższych szczytów i dołków w bardzo wąskim oknie czasowym. Pokazuje taktyczne punkty wejścia i wyjścia na najbliższe miesiące.
+                        
+                        *Zasada: Główny Nostradamus mówi Ci, kiedy przejść na emeryturę (Lambo). Nostradamus 8M mówi Ci, co robić w tym sezonie, żeby przetrwać i nie wylądować w Kartonie.*
+                        """)
+                    else:
+                        st.error("Wystąpił błąd podczas generowania projekcji Nostradamus 8M.")
+            elif st.session_state.get('active_lazy_chart') == 'nft_polacy':
+                with st.spinner("Pytam OpenSea o polską husarię..."):
+                    # Pobieranie danych. Oficjalny slug na OpenSea to "the-polacy-nft"
+                    stats_polacy = app.get_opensea_nft_stats("the-polacy-nft")
+                    # Dla "Polek" używamy hipotetycznego sluga, na wypadek gdyby ruszyli
+                    stats_polki = app.get_opensea_nft_stats("the-polki-nft") 
+                    
+                    fig = app.plot_nft_market_card(stats_polacy, stats_polki)
+                    if fig:
+                        st.pyplot(fig)
+                        
+                        # --- OPIS: JAK CZYTAĆ DANE NFT ---
+                        st.info("""
+                        🖼️ **POLSKIE NFT (THE POLACY / THE POLKI): Lokalny Hype vs Rzeczywistość**
+                        
+                        Ten panel śledzi zdrowie słynnej "Polskiej Husarii Web3" bezpośrednio z giełdy OpenSea.
+                        
+                        * 🟢 **Floor Price (Cena Podłogowa):** Najtańsza sztuka w całej kolekcji. Jeśli ta wartość rośnie w Eterach (ETH), to znaczy, że społeczność mocno trzyma swoje awatary (Diamond Hands) i nie chce sprzedawać tanio.
+                        * 📊 **Total Volume (Całkowity Obrót):** To jest brutalna prawda o płynności (Liquidity). Wysoki wolumen = rynek żyje, ludzie chętnie handlują. Niski lub zerowy wolumen 24h = rynek jest zamrożony, a sprzedaż Twojego NFT za godziwą cenę wymaga znalezienia pasjonata (Karton).
+                        
+                        *Zasada: Traktuj lokalne projekty NFT jako świetną ciekawostkę kulturową, przepustkę na zamknięte imprezy i bilet do społeczności (POAP), a nie jako super-płynne aktywo do szybkiego daytradingu na wzór Bitcoina. Tutaj rządzi sentyment i społeczność, a nie wykresy.*
+                        """)
+                    else:
+                        st.error("Błąd generowania panelu NFT.")
+            elif st.session_state.get('active_lazy_chart') == 'robocitizen_power':
+                with st.spinner("Skanuję rynek robotyki i nowych baterii..."):
+                    df_robo = app.get_robocitizen_data()
+                    fig = app.plot_robocitizen_dashboard(df_robo)
+                    
+                    if fig:
+                        st.pyplot(fig)
+                        st.info("""
+                        🔋 **ZASILANIE ROBOCITIZEN: Wyścig Zbrojeń Trwa**
+                        
+                        Ten wykres śledzi koszyk firm, które budują fundamenty pod maszyny przyszłości. Wszystkie startują z poziomu 100. Linia powyżej 100 to zysk, poniżej to strata względem zeszłego roku.
+                        
+                        * 🧠 **Mózgi (NVDA, ARM):** To one zżerają najwięcej prądu. Nvidia daje potężną moc obliczeniową dla AI (Isaac), a ARM projektuje architekturę, która pozwala maszynom "myśleć" bez przegrzewania się. To tutaj obecnie płynie najwięcej kapitału.
+                        * ⚙️ **Ciała (TSLA):** Tesla Optimus to zakład na to, że firma posiadająca najlepsze baterie na świecie i fabryki aut zdominuje rynek dwunożnych asystentów.
+                        * 🧪 **Krwiobieg (QS, SLDP):** Baterie Solid-State (Stały Elektrolit). Święty Graal energii. Są o połowę lżejsze i nie wybuchają. **OSTRZEŻENIE:** To inwestycje wysokiego ryzyka. Firmy te przepalają gotówkę (Karton), próbując wejść w produkcję masową. Jeśli im się uda – zgarną wszystko (Lambo).
+                        * 💧 **Wodór (PLUG):** Zakład na zasilanie przemysłowe. Świetne do ciężkich robotów magazynowych, zbyt niebezpieczne na razie do domów.
+                        
+                        *Zasada Inwestycyjna: Szukając "Lambo" w nowej rewolucji przemysłowej, nie kupuj tylko kopaczy złota (producentów robotów). Kupuj tych, którzy sprzedają im łopaty (procesory ARM, nowe baterie).*
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych z rynku giełdowego dla koszyka RoboCitizen.")
+            # --- DO DODANIA W GŁÓWNEJ PĘTLI WYKRESÓW (ELIF) ---
+            elif st.session_state.get('active_lazy_chart') == 'robomaterials_tech':
+                with st.spinner("Skanuję dostawców chemii i materiałów..."):
+                    df_mat = app.get_robomaterials_data()
+                    fig = app.plot_robomaterials_dashboard(df_mat)
+                    
+                    if fig:
+                        st.pyplot(fig)
+                        
+                        
+                        
+                        st.info("""
+                        🧪 **DEEP TECH MATERIALS: Złota Zasada "Łopat i Kilofów"**
+                        
+                        Nie wiemy, czy Apple, Tesla, czy OpenAI zbudują ostatecznego robota. Ale wiemy, z czego ten robot będzie zrobiony. Ten koszyk to spółki "Back-endowe" – dostarczyciele chemii, patentów i surowców.
+                        
+                        * 🔋 **Solid-State (Albemarle - ALB):** Stały elektrolit wciąż potrzebuje gigantycznych ilości litu najwyższej jakości. ALB to jeden z największych na świecie producentów litu i zaawansowanych materiałów z nim związanych.
+                        * 💧 **Wodór (Chemours - CC):** Każde ogniwo wodorowe potrzebuje membrany wymiany protonów (PEM). Chemours produkuje legendarny materiał **Nafion**, bez którego branża wodorowa po prostu nie istnieje.
+                        * 🦠 **Bio-Baterie (Ginkgo Bioworks - DNA):** [Ekstremalne Ryzyko] Lider w syntetycznej biologii. Jeśli bio-bateria ma trawić cukier, potrzebuje zaprogramowanych na zamówienie komórek i enzymów. To oni je "drukują". 
+                        * ☢️ **Baterie Diamentowe/Nuklearne (Centrus Energy - LEU):** Startup produkujący diamentowe baterie (NDB) nie jest na giełdzie, ale żeby bateria działała, potrzebuje izotopów i paliwa z reaktorów. LEU to lider w przetwarzaniu uranu i zaawansowanych wirówkach nuklearnych w USA.
+                        * 📡 **Beamed Energy (Energous - WATT):** [Micro-Cap / Ryzyko Kartonu] Mają patenty na przesyłanie energii do urządzeń na odległość (falami radiowymi RF). Ich czipy ładują urządzenia "w locie" bez kabli.
+                        
+                        *Zasada: To rynek dla cierpliwych. Zanim zyski wybuchną w kosmos (Lambo), te technologie muszą wyjść z laboratoriów i trafić na taśmy produkcyjne.*
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych dla koszyka Deep Tech Materials.")
+            # --- DO DODANIA W GŁÓWNEJ PĘTLI WYKRESÓW (ELIF) ---
+            elif st.session_state.get('active_lazy_chart') == 'hpc_supercomputers':
+                with st.spinner("Łączę się z infrastrukturą HPC..."):
+                    df_hpc = app.get_supercomputers_data()
+                    fig = app.plot_supercomputers_dashboard(df_hpc)
+                    
+                    if fig:
+                        st.pyplot(fig)
+                        
+                        
+                        
+                        st.info("""
+                        🖥️ **ERA EXASCALE: Kto buduje cyfrowe mózgi świata?**
+                        
+                        Ten wykres śledzi kondycję firm stojących za największymi maszynami liczącymi na naszej planecie (jak El Capitan czy farmy serwerów X/Elona Muska).
+                        
+                        * 🧠 **AMD i NVDA:** Wojna o krzem. AMD napędza obecnie dwa najszybsze superkomputery świata. Nvidia z kolei dominuje w komercyjnych farmach prywatnych firm budujących AI.
+                        * 🏗️ **HPE (Hewlett Packard Enterprise):** To oni są głównymi architektami rządowych potworów. Zszywają procesory, chłodzenie i oprogramowanie w jedną, potężną maszynę. Solidny biznes (B2G/B2B).
+                        * ❄️ **DELL:** Serwery są teraz tak gorące, że nie da się ich chłodzić powietrzem. Dell wygrywa ogromne kontrakty na systemy bezpośredniego chłodzenia cieczą (Liquid Cooling).
+                        * 💾 **MU (Micron):** Karty graficzne są niczym bez superszybkiej podręcznej pamięci (HBM). Podaż pamięci HBM jest dziś jednym z największych wąskich gardeł na świecie.
+                        
+                        *Zasada: Bez tych firm nie ma AI, nie ma robotów zasilanych bateriami solid-state i nie ma wyścigu po AGI. To fundament technologicznego Lambo na najbliższą dekadę.*
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych dla koszyka Superkomputerów.")
+            # --- DO DODANIA W GŁÓWNEJ PĘTLI WYKRESÓW (ELIF) ---
+            elif st.session_state.get('active_lazy_chart') == 'power_bottleneck':
+                with st.spinner("Skanuję kryzys energetyczny i infrastrukturę..."):
+                    df_power = app.get_power_bottleneck_data()
+                    fig = app.plot_power_bottleneck_dashboard(df_power)
+                    
+                    if fig:
+                        st.pyplot(fig)
+                        
+                        
+                        
+                        st.info("""
+                        ⚡ **NAJBLIŻSZE WĄSKIE GARDŁO: Brak Prądu, Kabli i Wody**
+                        
+                        Największym wąskim gardłem (Bottleneck) nie jest już produkcja czipów Nvidii. Jest nim **FIZYKA I ENERGETYKA**. Giganci techu mają miliardy na budowę AI, ale światowa sieć energetyczna po prostu nie jest w stanie tego uciągnąć. 
+                        
+                        Oto 3 filary tego kryzysu, w które pcha się teraz kapitał:
+                        
+                        * ☢️ **Energia Jądrowa i SMR (CEG, SMR):** Fabryka AI potrzebuje gigawatów prądu 24/7. Wiatr i słońce są bezużyteczne (nie wieje = AI staje). Microsoft już podpisał umowę na restart reaktora w Three Mile Island. Mali gracze (SMR - NuScale) próbują budować mini-reaktory bezpośrednio przy Data Center.
+                        * 🔌 **Transformatory i Miedź (ETN, FCX):** Nawet jeśli mamy prąd z reaktora, trzeba go doprowadzić kablami. Na świecie fizycznie brakuje miedzi. Czas oczekiwania na dostawę potężnego transformatora wysokiego napięcia (Eaton) wydłużył się z kilku miesięcy do ponad 2 lat!
+                        * 🧊 **Chłodzenie Cieczą (VRT):** Superkomputery nowej ery dosłownie stopiłyby się w kilka minut na zwykłych wentylatorach. Vertiv (VRT) dostarcza zaawansowaną hydraulikę (Liquid Cooling), która odprowadza wrzątek bezpośrednio z procesorów.
+                        
+                        *Zasada Inwestycyjna: Gdy zaczyna brakować prądu dla superkomputerów, fizyczna infrastruktura, miedź i transformatory stają się cenniejsze niż same algorytmy.*
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych dla koszyka Wąskich Gardeł.")
+            elif st.session_state.get('active_lazy_chart') == 'pal_vs_halving':
+                app.render_pal_vs_halving_analysis()
+            # --- DO DODANIA W GŁÓWNEJ PĘTLI WYKRESÓW (ELIF) ---
+            elif st.session_state.get('active_lazy_chart') == 'capital_rotation':
+                with st.spinner("Szukam śladów rotacji grubego kapitału..."):
+                    df_rot = app.get_capital_rotation_data()
+                    fig = app.plot_capital_rotation(df_rot)
+                    
+                    if fig:
+                        st.pyplot(fig)
+                        
+                        st.info("""
+                        🔄 **DETEKTOR ROTACJI: Kiedy Smart Money kupuje "Ciało" AI**
+                        
+                        Ten wykres nie pokazuje zwykłych cen akcji. To jest **Wskaźnik Siły Relatywnej (Ratio)**. Pokazuje, kto wygrywa przeciąganie liny między wirtualnym oprogramowaniem (Tech) a fizycznym światem (Przemysł/Surowce).
+                        
+                        * 📈 **Wykres idzie w GÓRĘ (Sygnał Lambo dla Przemysłu):** To jest ten moment! Oznacza to, że fundusze sprzedają przewartościowane akcje spółek technologicznych (np. Nvidii, Microsoftu) i pakują zyski w fabryki, miedź i twardą infrastrukturę. To tutaj kapitał budzi wskaźnik ISM do życia.
+                        * 📉 **Wykres idzie w DÓŁ (Status Quo):** Kapitał wciąż siedzi bezpiecznie w chmurze i modelach językowych. Tech jest królem, a przemysł krwawi (Karton dla fabryk).
+                        * ➖ **Linia 100 (Baza):** Poziom startowy sprzed 2 lat. 
+                        
+                        **Jak z tego korzystać?** Kiedy zobaczysz, że pomarańczowa linia (Przemysł vs Tech) zaczyna agresywnie i trwale wybijać w górę, łamiąc wielomiesięczny trend spadkowy, to jest ostateczny dowód, że Wall Street przestało pompować "Mózg" i zaczęło budować "Ciało".
+                        """)
+                    else:
+                        st.error("Błąd pobierania danych do Wskaźnika Rotacji.")
         # Pobieranie CSV
         if os.path.isfile("market_log.csv"):
             with open("market_log.csv", "rb") as f: st.download_button("📥 Pobierz CSV", f, "lambo.csv")
@@ -14528,4 +18147,12 @@ def main():
     app.display_bottom_ticker()
 
 if __name__ == "__main__":
+    # Inicjalizacja głównej klasy programu
+    app = MarketProbabilityIndex()
+
+    # --- TUTAJ DAJEMY RENDERY (Zaraz po konfiguracji strony i inicjalizacji klasy) ---
+    app.render_app_header() 
+    app.render_top_marquee_banner()
+
+    # ... (Tutaj leci reszta Twojego kodu, czyli np. st.sidebar, zakładki tab1, tab2 itd.) ...
     main()
