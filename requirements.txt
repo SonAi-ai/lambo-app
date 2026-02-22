@@ -1,16 +1,17 @@
 streamlit
-yfinance
 pandas
+yfinance
 matplotlib
 seaborn
-requests
 feedparser
-pandas_datareader
-numpy
 textblob
+pandas-datareader
 prophet
-adjustText
+numpy
+requests
+curl-cffi
 xlrd
-selenium webdriver-manager
+selenium
+webdriver-manager
 html5lib
 lxml
