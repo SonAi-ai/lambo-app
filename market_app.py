@@ -9139,6 +9139,13 @@ class MarketProbabilityIndex:
         # LINK DO SUROWEGO PLIKU (RAW)
         UPDATE_URL = "https://raw.githubusercontent.com/SonAi-ai/lambo-app/refs/heads/main/market_app.py" 
         
+        # BAZA PLIKÓW DODATKOWYCH DO POBRANIA
+        EXTRA_FILES = {
+            "logo.png": "https://raw.githubusercontent.com/SonAi-ai/lambo-app/refs/heads/main/logo.png",
+            "requirements.txt": "https://raw.githubusercontent.com/SonAi-ai/lambo-app/refs/heads/main/requirements.txt",
+            "start.bat": "https://raw.githubusercontent.com/SonAi-ai/lambo-app/refs/heads/main/start.bat"
+        }
+        
         try:
             # 1. Pobieramy kod z neta
             response = requests.get(UPDATE_URL, timeout=3)
@@ -9183,6 +9190,18 @@ class MarketProbabilityIndex:
                                     # Nadpisujemy plik, w którym jesteśmy
                                     with open(__file__, "w", encoding="utf-8") as f:
                                         f.write(new_code)
+                                    
+                                    # --- NOWE: Pobieranie dodatkowych plików ---
+                                    for filename, file_url in EXTRA_FILES.items():
+                                        try:
+                                            file_resp = requests.get(file_url, timeout=5)
+                                            if file_resp.status_code == 200:
+                                                # Używamy zapisu binarnego "wb", co jest absolutnie kluczowe dla zaciągnięcia obrazka logo.png
+                                                with open(filename, "wb") as f_extra:
+                                                    f_extra.write(file_resp.content)
+                                                print(f"Pomyślnie zaktualizowano: {filename}")
+                                        except Exception as dl_error:
+                                            print(f"Błąd pobierania dodatkowego pliku {filename}: {dl_error}")
                                     
                                     st.success("✅ ZAKTUALIZOWANO! Restartuję silnik...")
                                     time.sleep(2)
