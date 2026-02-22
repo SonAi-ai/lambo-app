@@ -10,3 +10,7 @@ numpy
 textblob
 prophet
 adjustText
+xlrd
+selenium webdriver-manager
+html5lib
+lxml

@@ -23,7 +23,7 @@ from math import pi
 from PIL import Image   # <--- WAŻNE: Dodajemy obsługę obrazków
 
 # --- KONFIGURACJA WERSJI ---
-APP_VERSION = "1.3"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
+APP_VERSION = "1.4"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
 # ---------------------------
 
 # --- OBSŁUGA PROPHET ---
@@ -115,6 +115,36 @@ class MarketProbabilityIndex:
             st.session_state['theme_mode'] = 'light'
         else:
             st.session_state['theme_mode'] = 'dark'
+
+    # --- METODA: KONTAKT TELEGRAM ---
+    def render_telegram_contact(self):
+        """
+        Wyświetla elegancki przycisk kontaktowy Telegram w panelu bocznym.
+        Dodano poziomą linię oddzielającą (separator) na samej górze.
+        Pamiętaj, aby podmienić 'TwojaNazwaUzytkownika' na swój prawdziwy uchwyt (handle).
+        """
+        import streamlit as st
+        
+        # --- Dodajemy jasny pasek oddzielający od poprzedniej sekcji (Coffee Time) ---
+        st.sidebar.markdown("---")
+        
+        # TUTAJ WPISZ SWOJĄ NAZWĘ Z TELEGRAMA (bez znaku @ na początku)
+        telegram_handle = "TwojaNazwaUzytkownika"
+        telegram_url = f"https://t.me/{telegram_handle}"
+        
+        st.sidebar.markdown("### 📬 Kontakt z Autorem")
+        
+        telegram_html = f"""
+        <a href="{telegram_url}" target="_blank" style="text-decoration: none;">
+            <div style="background-color: #24A1DE; color: white; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; font-family: 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; gap: 10px; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a11.957 11.957 0 0 0-.056 0zm4.962 7.224-2.505 11.816c-.19.865-.705 1.084-1.428.675l-3.95-2.91-1.905 1.838c-.21.21-.387.387-.795.387l.284-4.032 7.336-6.626c.32-.284-.07-.442-.495-.157l-9.066 5.707-3.91-1.22c-.85-.267-.866-.85.178-1.258l15.286-5.892c.708-.26 1.32.16 1.07 1.672z"/>
+                </svg>
+                Napisz na Telegramie
+            </div>
+        </a>
+        """
+        st.sidebar.markdown(telegram_html, unsafe_allow_html=True)
             
     # --- POPRAWIONE METODY: PASEK REKLAMOWY I LOGO ---
     def get_promotional_texts(self):
@@ -15145,6 +15175,1762 @@ class MarketProbabilityIndex:
         plt.tight_layout()
         
         return fig
+    # --- NOWA METODA: DANE DO "GDZIE JEST KAPUSTA" ---
+    def get_where_is_the_money_data(self):
+        """
+        Pobiera dane dla 3 koszyków po 5 największych liderów S&P500, 
+        aby sprawdzić, gdzie ulica pompuje kapitał (okres 6 miesięcy).
+        """
+        import yfinance as yf
+        import pandas as pd
+        import datetime
+        
+        # 3 Koszyki Narracyjne (Gdzie płynie kasa)
+        baskets = {
+            "🧠 KOSZYK 1: Mózg i Hype (AI, Tech, Półprzewodniki)": ['NVDA', 'MSFT', 'META', 'AAPL', 'AVGO'],
+            "🏭 KOSZYK 2: Ciało i Przemysł (Twarda infrastruktura S&P500)": ['GE', 'CAT', 'XOM', 'JPM', 'TSLA'],
+            "🛒 KOSZYK 3: Bezpieczna Przystań (Konsument i Medycyna)": ['LLY', 'WMT', 'COST', 'PG', 'KO']
+        }
+        
+        end_date = datetime.datetime.now()
+        start_date = end_date - datetime.timedelta(days=180) # Ostatnie pół roku pokazuje twardy trend
+        
+        results = {}
+        
+        for basket_name, tickers in baskets.items():
+            try:
+                # Pobieramy ceny zamknięcia dla całego koszyka
+                df = yf.download(tickers, start=start_date, end=end_date, progress=False)['Close']
+                
+                # Normalizujemy do 100% na początku wykresu. 
+                # Dzięki temu widzimy CZYSTĄ STOPĘ ZWROTU - to pokazuje gdzie jest prawdziwa "Pompa".
+                df_normalized = (df / df.iloc[0]) * 100
+                results[basket_name] = df_normalized.ffill()
+            except Exception as e:
+                print(f"Błąd pobierania danych dla {basket_name}: {e}")
+                
+        return results
+
+    # --- NOWA METODA: WYKRESY "GDZIE JEST KAPUSTA" ---
+    def plot_kapusta_charts(self, results_dict):
+        """
+        Generuje 3 osobne wykresy pokazujące stopę zwrotu z poszczególnych koszyków.
+        """
+        import matplotlib.pyplot as plt
+        import streamlit as st
+        
+        # Próba pobrania motywu, jeśli nie istnieje - ustawiamy awaryjny ciemny
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+            
+        figs = []
+        
+        for basket_name, df in results_dict.items():
+            fig = plt.figure(figsize=(10, 4))
+            ax = fig.add_subplot(111)
+            
+            # Rysujemy linie dla każdej spółki
+            for col in df.columns:
+                last_value = df[col].iloc[-1]
+                # Jeśli wycena jest > 100%, to znaczy, że urosło
+                growth = last_value - 100 
+                ax.plot(df.index, df[col], label=f"{col} (+{growth:.1f}%)" if growth > 0 else f"{col} ({growth:.1f}%)", linewidth=2.5)
+
+            # Formatowanie wykresu
+            ax.set_title(basket_name, fontsize=14, color='#00ff41', fontweight='bold')
+            ax.axhline(100, color=t['text'], linestyle='--', linewidth=1, alpha=0.5) # Linia startu = 100%
+            
+            fig.patch.set_facecolor(t['bg'])
+            ax.set_facecolor(t['bg'])
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['bottom'].set_color(t['text'])
+            ax.spines['left'].set_color(t['text'])
+            ax.tick_params(colors=t['text'])
+            ax.grid(True, alpha=0.15, color=t['grid'])
+            
+            # Legenda z wynikami procentowymi na samym końcu
+            ax.legend(facecolor=t['bg'], labelcolor=t['text'], loc='upper left', bbox_to_anchor=(1.02, 1), borderaxespad=0.)
+            plt.tight_layout()
+            
+            figs.append(fig)
+            
+        return figs
+    # --- ZAKTUALIZOWANA METODA: DEEP SCAN CAŁEGO S&P 500 (NAPRAWA 403 FORBIDDEN) ---
+    def get_deep_scan_sp500_data(self):
+        """
+        Pobiera dynamicznie wszystkie ~500 spółek z S&P 500, grupuje je w 3 sektory narracyjne,
+        oblicza ich stopę zwrotu z ostatnich 6 miesięcy i zwraca TOP 5 z każdego koszyka.
+        NAPRAWIONO: Dodano nagłówek User-Agent (obejście blokady 403 od Wikipedii).
+        """
+        import yfinance as yf
+        import pandas as pd
+        import datetime
+        import requests
+        
+        # 1. Pobieramy aktualną listę S&P 500 z Wikipedii (z ominięciem blokady)
+        try:
+            url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+            # Wikipedia blokuje domyślne zapytania z Pythona (błąd 403). Udajemy prawdziwą przeglądarkę Chrome.
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+            response = requests.get(url, headers=headers)
+            response.raise_for_status() # Sprawdza, czy zapytanie przeszło bez błędów
+            
+            # Wczytujemy tabelę z tekstu HTML, a nie bezpośrednio z URL
+            sp500_table = pd.read_html(response.text)[0]
+            # yfinance używa myślników zamiast kropek (np. BRK.B -> BRK-B)
+            sp500_table['Symbol'] = sp500_table['Symbol'].str.replace('.', '-', regex=False)
+        except Exception as e:
+            print(f"Błąd pobierania listy S&P500: {e}")
+            return None
+
+        # 2. Definiujemy nasze 3 koszyki na podstawie oficjalnych sektorów GICS (GICS Sector)
+        baskets_mapping = {
+            "🧠 KOSZYK 1: Mózg i Cyfryzacja (Tech & Komunikacja)": ['Information Technology', 'Communication Services'],
+            "🏭 KOSZYK 2: Ciało i Twarda Gospodarka (Przemysł, Surowce, Energia)": ['Industrials', 'Energy', 'Materials', 'Utilities'],
+            "🛒 KOSZYK 3: Schron i Przetrwanie (Konsument i Zdrowie)": ['Health Care', 'Consumer Staples']
+        }
+        
+        # 3. Kategoryzujemy tickery
+        categorized_tickers = {
+            "🧠 KOSZYK 1: Mózg i Cyfryzacja (Tech & Komunikacja)": [],
+            "🏭 KOSZYK 2: Ciało i Twarda Gospodarka (Przemysł, Surowce, Energia)": [],
+            "🛒 KOSZYK 3: Schron i Przetrwanie (Konsument i Zdrowie)": []
+        }
+        
+        for index, row in sp500_table.iterrows():
+            ticker = row['Symbol']
+            sector = row['GICS Sector']
+            for basket_name, sectors_list in baskets_mapping.items():
+                if sector in sectors_list:
+                    categorized_tickers[basket_name].append(ticker)
+
+        # 4. Pobieramy dane dla CAŁEGO indeksu jednym potężnym zapytaniem
+        all_tickers = sp500_table['Symbol'].tolist()
+        start_date = datetime.datetime.now() - datetime.timedelta(days=180)
+        
+        try:
+            # Batch download - najszybsza metoda do przemielenia całego indeksu
+            data = yf.download(all_tickers, start=start_date, progress=False)['Close']
+        except Exception as e:
+            print(f"Błąd pobierania cen S&P500: {e}")
+            return None
+
+        # 5. Znajdujemy TOP 5 z każdego koszyka i przygotowujemy znormalizowane dane do wykresu
+        results = {}
+        
+        for basket_name, tickers in categorized_tickers.items():
+            # Zostawiamy w df tylko te spółki, które mamy w danych i w danym koszyku
+            valid_tickers = [t for t in tickers if t in data.columns]
+            basket_data = data[valid_tickers].dropna(axis=1, how='all')
+            
+            # Obliczamy całkowity zwrot dla każdej spółki (Ostatnia wartość / Pierwsza ważna wartość)
+            returns = {}
+            for col in basket_data.columns:
+                valid_series = basket_data[col].dropna()
+                if len(valid_series) > 10: # Spółka musi mieć przynajmniej trochę historii
+                    pct_return = (valid_series.iloc[-1] / valid_series.iloc[0]) - 1
+                    returns[col] = pct_return
+                    
+            # Sortujemy i wybieramy top 5 tickerów
+            top_5_tickers = sorted(returns, key=returns.get, reverse=True)[:5]
+            
+            # Tworzymy znormalizowany DataFrame (baza 100) dla tych Top 5 do narysowania
+            top_5_data = basket_data[top_5_tickers].ffill().bfill()
+            normalized_top_5 = (top_5_data / top_5_data.iloc[0]) * 100
+            
+            results[basket_name] = normalized_top_5
+            
+        return results
+    # --- NOWA METODA: WYKRESY DEEP SCAN ---
+    def plot_deep_scan_charts(self, results_dict):
+        """
+        Generuje 3 wykresy dla skanera całego S&P 500.
+        """
+        import matplotlib.pyplot as plt
+        import streamlit as st
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+            
+        figs = []
+        
+        for basket_name, df in results_dict.items():
+            fig = plt.figure(figsize=(10, 4))
+            ax = fig.add_subplot(111)
+            
+            for col in df.columns:
+                last_value = df[col].iloc[-1]
+                growth = last_value - 100 
+                ax.plot(df.index, df[col], label=f"{col} (+{growth:.1f}%)" if growth > 0 else f"{col} ({growth:.1f}%)", linewidth=2.5)
+
+            # Formatowanie wykresu
+            ax.set_title(basket_name, fontsize=14, color='#ff0055', fontweight='bold') # Czerwony neon dla Deep Scanu
+            ax.axhline(100, color=t['text'], linestyle='--', linewidth=1, alpha=0.5)
+            
+            fig.patch.set_facecolor(t['bg'])
+            ax.set_facecolor(t['bg'])
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['bottom'].set_color(t['text'])
+            ax.spines['left'].set_color(t['text'])
+            ax.tick_params(colors=t['text'])
+            ax.grid(True, alpha=0.15, color=t['grid'])
+            
+            ax.legend(facecolor=t['bg'], labelcolor=t['text'], loc='upper left', bbox_to_anchor=(1.02, 1), borderaxespad=0.)
+            plt.tight_layout()
+            
+            figs.append(fig)
+            
+        return figs
+    # --- ZAKTUALIZOWANA METODA: DANE COMEX (SREBRO) - PEŁEN SUKCES I SILNIK XLS ---
+    def get_comex_silver_data(self):
+        """
+        Pobiera oficjalny, dzienny raport zapasów srebra bezpośrednio z serwerów giełdy CME Group (COMEX).
+        Zoptymalizowano: Perfekcyjne ominięcie zapory (curl_cffi) oraz obsługa antycznego formatu .xls od CME.
+        """
+        import pandas as pd
+        import io
+        
+        try:
+            from curl_cffi import requests as cffi_requests
+        except ImportError:
+            import streamlit as st
+            st.error("Brak potężnej biblioteki do łamania firewalli! Wpisz w terminalu: pip install curl-cffi")
+            return None
+            
+        url = "https://www.cmegroup.com/delivery_reports/Silver_stocks.xls"
+        
+        try:
+            # Używamy impersonate="chrome120", by omijać zapory CME
+            response = cffi_requests.get(url, impersonate="chrome120", timeout=30)
+            
+            if response.status_code == 200:
+                try:
+                    # Wczytujemy plik Excel. Jawnie wymuszamy engine='xlrd', bo pliki CME to stare .xls
+                    df = pd.read_excel(io.BytesIO(response.content), skiprows=5, engine='xlrd')
+                except ImportError:
+                    import streamlit as st
+                    st.error("Brakuje silnika do czytania archaicznych plików Excel (.xls) od Wall Street! Wpisz w terminalu: pip install xlrd")
+                    return None
+                
+                # Czyszczenie pustego szumu (usuwamy wiersze i kolumny, w których nie ma żadnych danych)
+                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+                
+                # Podstawowe formatowanie
+                df = df.fillna("") 
+                
+                return df
+            else:
+                print(f"Błąd sieci: Otrzymano kod {response.status_code} od serwerów CME.")
+                return None
+                
+        except Exception as e:
+            print(f"Błąd pobierania raportu COMEX: {e}")
+            return None
+    # --- ZAKTUALIZOWANA METODA: DANE COMEX (PEŁNA TABELA DLA SKARBCÓW) ---
+    def get_comex_silver_data(self):
+        """
+        Pobiera oficjalny raport srebra z CME Group.
+        Zoptymalizowano: Rotacyjny kamuflaż TLS (ominięcie błędu 403) oraz twarda konwersja do Stringów.
+        Zwraca pełną tabelę, przygotowaną pod parser skarbców w metodzie plot_comex_silver_charts.
+        """
+        import pandas as pd
+        import io
+        import random
+        import time
+        
+        try:
+            from curl_cffi import requests as cffi_requests
+        except ImportError:
+            import streamlit as st
+            st.error("Brak biblioteki curl-cffi! Wpisz w terminalu: pip install curl-cffi")
+            return None
+            
+        url = "https://www.cmegroup.com/delivery_reports/Silver_stocks.xls"
+        
+        # Rotacja podpisów przeglądarek do walki z firewallem Akamai
+        impersonations = ["chrome120", "chrome110", "safari15_5", "edge101", "safari15_3"]
+        random.shuffle(impersonations)
+        
+        headers = {
+            "Referer": "https://www.cmegroup.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
+            "Cache-Control": "max-age=0"
+        }
+        
+        df = None
+        
+        for imp in impersonations:
+            try:
+                time.sleep(1.5) # Delikatne opóźnienie, by nie drażnić zabezpieczeń
+                response = cffi_requests.get(url, impersonate=imp, headers=headers, timeout=20)
+                
+                if response.status_code == 200:
+                    try:
+                        # Jawnie wymuszamy silnik xlrd dla prehistorycznego formatu CME
+                        df = pd.read_excel(io.BytesIO(response.content), skiprows=5, engine='xlrd')
+                        break # Sukces, wychodzimy z pętli kamuflażu
+                    except ImportError:
+                        return None
+            except Exception:
+                continue # Blokada, ładujemy kolejny profil
+                
+        if df is None or df.empty:
+            print("Błąd 403: Wszystkie kamuflaże zawiodły. Odczekaj 15-30 minut i spróbuj ponownie.")
+            return None
+            
+        try:
+            # 1. Usuwamy całkowicie puste rzędy i kolumny
+            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+            
+            # 2. TWARDA KONWERSJA NA TEKST
+            # To ratuje aplikację przed błędem PyArrow (ArrowTypeError) podczas renderowania.
+            # Twoja metoda 'plot' bez problemu przetworzy te stringi na float za pomocą wbudowanej funkcji 'clean_val'.
+            df = df.fillna("").astype(str)
+            
+            return df
+        except Exception as e:
+            print(f"Błąd przetwarzania ramki danych: {e}")
+            return None
+
+    # --- ZAKTUALIZOWANA METODA: WYKRESY COMEX (SREBRO - PAMIĘĆ 30 DNI) ---
+    def plot_comex_silver_charts(self, df):
+        """
+        Generuje wykres słupkowy dla SREBRA.
+        DODANO: Własną lokalną bazę danych (CSV), która zapamiętuje stany skarbców
+        i oblicza alarm 50% na przestrzeni do 30 dni (omijając ograniczenia giełdy CME).
+        """
+        import matplotlib.pyplot as plt
+        import streamlit as st
+        import pandas as pd
+        import os
+        import datetime
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+            
+        reg_val = 0.0
+        reg_prev_excel = 0.0 # Wartość z wczoraj prosto z pliku giełdy
+        elig_val = 0.0
+        
+        # 1. Skanujemy tabelę giełdową
+        for r_idx in range(len(df)):
+            row_texts = [str(x).upper() for x in df.iloc[r_idx, :]]
+            row_str = " ".join(row_texts)
+            
+            if 'TOTAL REGISTERED' in row_str:
+                nums = []
+                for val in df.iloc[r_idx, :]:
+                    try:
+                        clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                        if clean_v and clean_v.lower() != 'nan':
+                            nums.append(float(clean_v))
+                    except:
+                        pass
+                if nums:
+                    reg_val = nums[-1]  
+                    reg_prev_excel = nums[0] if len(nums) > 1 else nums[-1] 
+                    
+            if 'TOTAL ELIGIBLE' in row_str:
+                nums = []
+                for val in df.iloc[r_idx, :]:
+                    try:
+                        clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                        if clean_v and clean_v.lower() != 'nan':
+                            nums.append(float(clean_v))
+                    except:
+                        pass
+                if nums:
+                    elig_val = nums[-1]
+
+        # 2. SYSTEM LOKALNEJ PAMIĘCI (BUDOWANIE HISTORII 30 DNI)
+        history_file = "comex_silver_history.csv"
+        today_dt = pd.to_datetime(datetime.date.today().isoformat())
+        comparison_val = reg_prev_excel # Domyślnie używamy danych z wczoraj jako fallback
+        days_tracked = 1
+        
+        if reg_val > 0:
+            if os.path.exists(history_file):
+                try:
+                    hist_df = pd.read_csv(history_file)
+                    hist_df['Date'] = pd.to_datetime(hist_df['Date'])
+                except:
+                    hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+            else:
+                hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+
+            # Zapisz lub zaktualizuj dzisiejszy odczyt w pliku
+            if not hist_df[hist_df['Date'] == today_dt].empty:
+                hist_df.loc[hist_df['Date'] == today_dt, ['Registered', 'Eligible']] = [reg_val, elig_val]
+            else:
+                new_row = pd.DataFrame({'Date': [today_dt], 'Registered': [reg_val], 'Eligible': [elig_val]})
+                hist_df = pd.concat([hist_df, new_row], ignore_index=True)
+
+            hist_df = hist_df.sort_values('Date')
+            hist_df.to_csv(history_file, index=False)
+
+            # Znajdź odczyt sprzed 30 dni (lub najstarszy dostępny)
+            target_date = today_dt - pd.Timedelta(days=30)
+            past_records = hist_df[hist_df['Date'] <= target_date]
+
+            if not past_records.empty:
+                ref_record = past_records.iloc[-1] # Najbliższy punkt sprzed równo 30 dni
+            else:
+                ref_record = hist_df.iloc[0] # Najstarszy punkt w bazie (jeśli baza ma mniej niż 30 dni)
+                
+            comparison_val = ref_record['Registered']
+            days_tracked = (today_dt - ref_record['Date']).days
+            
+            # Zabezpieczenie na wypadek, gdyby to było pierwsze uruchomienie programu w ogóle
+            if days_tracked == 0:
+                comparison_val = reg_prev_excel
+                days_tracked = 1
+
+        # 3. SYSTEM OSTRZEGAWCZY (ZIELONE / CZERWONE ŚWIATŁO)
+        is_red_light = False
+        
+        if days_tracked >= 30:
+            period_str = "ostatnich 30 dni"
+        elif days_tracked > 1:
+            period_str = f"ostatnich {days_tracked} dni (buduję bazę do 30 dni)"
+        else:
+            period_str = "ostatniego dnia (pierwszy zapis, zaczynam budować bazę 30-dniową)"
+
+        if comparison_val > 0 and reg_val > 0:
+            if reg_val >= (comparison_val * 1.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa SREBRA 'Registered' wzrosła o 50% lub więcej w ciągu {period_str}! (Skok z {int(comparison_val):,} na {int(reg_val):,} uncji). Smart Money szykuje się do masywnych dostaw!")
+            elif reg_val <= (comparison_val * 0.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa SREBRA 'Registered' spadła o 50% lub więcej w ciągu {period_str}! (Drenaż z {int(comparison_val):,} na {int(reg_val):,} uncji). Ogromne ryzyko Silver Squeeze!")
+            else:
+                st.success(f"🟢 ZIELONE ŚWIATŁO: Rezerwa SREBRA w normie. Brak odchyleń rzędu 50% w ujęciu {period_str}.")
+        elif reg_val > 0:
+            st.success("🟢 ZIELONE ŚWIATŁO: Rezerwa SREBRA w normie.")
+
+        # 4. Rysowanie wykresu
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111)
+        
+        if reg_val > 0 or elig_val > 0:
+            labels = ['Registered (Gotowe do wydania)', 'Eligible (Prywatne / Nie na sprzedaż)']
+            values = [reg_val, elig_val]
+            
+            reg_color = '#ff0000' if is_red_light else '#ff0055'
+            bars = ax.bar(labels, values, color=[reg_color, '#555555'])
+            
+            for bar in bars:
+                yval = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, yval + (max(values)*0.02),
+                        f"{int(yval):,}".replace(',', ' '), ha='center', va='bottom', 
+                        color=t['text'], fontsize=14, fontweight='bold')
+                        
+            ax.set_title("CAŁKOWITE Zapasy SREBRA na COMEX (Podsumowanie)", color='#00ff41', fontsize=16, fontweight='bold')
+            ax.set_ylabel("Uncje Trojańskie", color=t['text'], fontsize=12)
+        else:
+            ax.text(0.5, 0.5, "UWAGA: Brak danych do wyrysowania wykresu.", ha='center', va='center', color='#ff0055', fontsize=14, fontweight='bold')
+
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'], axis='y')
+        
+        plt.tight_layout()
+        return fig
+
+    # --- NOWA METODA: DANE FRACTAL MACRO (ZŁOTO) ---
+    def get_gold_macro_fractal_data(self):
+        """
+        Pobiera całą dostępną historię cen złota, izoluje ostatnie 2 lata 
+        i szuka w przeszłości idealnego dopasowania (korelacji Pearsona).
+        Następnie wyciąga z tamtego momentu kolejne 5 lat i zwraca jako projekcję.
+        """
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        import datetime
+
+        try:
+            # Używamy kontraktów futures na złoto (GC=F), bo mają najdłuższą historię giełdową
+            df_raw = yf.download("GC=F", period="max", progress=False)
+            if 'Close' in df_raw:
+                df = df_raw['Close'].dropna()
+                # Zabezpieczenie na nowe wersje yfinance (multi-index)
+                if isinstance(df, pd.DataFrame):
+                    df = df.iloc[:, 0]
+            else:
+                return None
+        except Exception as e:
+            print(f"Błąd pobierania danych złota: {e}")
+            return None
+
+        if len(df) < 2000: # Wymagamy minimum ~8 lat historii (2000 dni roboczych)
+            return None 
+
+        pattern_days = 504 # 2 lata robocze
+        forecast_days = 1260 # 5 lat roboczych
+
+        current_pattern = df.iloc[-pattern_days:]
+        current_normalized = current_pattern / current_pattern.iloc[0]
+
+        best_corr = -1
+        best_idx = 0
+
+        # Zostawiamy rok buforu, żeby nie nałożyć się na dzisiejsze dane podczas skanowania
+        search_end = len(df) - pattern_days - forecast_days - 252 
+
+        # Zamiana na numpy array dla maksymalnej prędkości skanowania pętli
+        curr_vals = current_normalized.values
+
+        for i in range(search_end):
+            historical_slice = df.iloc[i : i + pattern_days]
+            hist_vals = historical_slice.values
+            
+            # Unikamy błędów dzielenia przez 0
+            if hist_vals[0] == 0: continue
+                
+            hist_normalized = hist_vals / hist_vals[0]
+
+            # Obliczamy korelację matematyczną (Pearson)
+            corr = np.corrcoef(curr_vals, hist_normalized)[0, 1]
+            if not np.isnan(corr) and corr > best_corr:
+                best_corr = corr
+                best_idx = i
+
+        # Wyciągamy idealnie dopasowany kawałek i jego przyszłość z tamtego okresu
+        matched_slice = df.iloc[best_idx : best_idx + pattern_days]
+        forecast_slice = df.iloc[best_idx + pattern_days : best_idx + pattern_days + forecast_days]
+
+        # Mnożnik: Łączymy punkt startowy historycznej prognozy z naszą dzisiejszą ceną zamknięcia
+        last_price = current_pattern.iloc[-1]
+        matched_last_price = matched_slice.iloc[-1]
+        multiplier = last_price / matched_last_price
+
+        projected_prices = forecast_slice.values * multiplier
+
+        # Generujemy przyszłe daty (tylko dni robocze giełdy)
+        last_date = current_pattern.index[-1]
+        future_dates = pd.date_range(start=last_date + datetime.timedelta(days=1), periods=forecast_days, freq='B')
+
+        return {
+            'historical': df.iloc[-pattern_days * 3:], # Do wykresu pobieramy ostatnie 6 lat jako tło
+            'current_pattern': current_pattern,
+            'future_dates': future_dates,
+            'projected_prices': projected_prices,
+            'match_start': matched_slice.index[0].strftime('%Y-%m-%d'),
+            'match_end': matched_slice.index[-1].strftime('%Y-%m-%d'),
+            'correlation': best_corr
+        }
+
+    # --- NOWA METODA: WYKRES FRACTAL MACRO (ZŁOTO) ---
+    def plot_gold_macro_fractal(self, data):
+        """
+        Generuje wykres z potężną projekcją 5-letnią.
+        Rysuje historię z ostatnich lat, nakłada na nią "złoty" wzór z ostatnich 2 lat,
+        a następnie wyrysowuje szarą przerywaną linię przyszłości.
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(111)
+
+        hist = data['historical']
+        current = data['current_pattern']
+        future_dates = data['future_dates']
+        projected = data['projected_prices']
+
+        # 1. Tło - starsza historia
+        ax.plot(hist.index, hist.values, color='#555555', alpha=0.5, linewidth=1.5, label='Historia Złota (Tło)')
+
+        # 2. Wyostrzony obecny wzór (ostatnie 2 lata)
+        ax.plot(current.index, current.values, color='#FFD700', linewidth=2.5, label='Ostatnie 2 lata (Obecny Wzór)')
+
+        # 3. Przyszłość - SZARA PRZERYWANA LINIA (Roadmap)
+        # Aby połączyć płynnie linię dzisiejszą z prognozą, dodajemy jeden punkt z dzisiaj
+        proj_dates = [current.index[-1]] + list(future_dates)
+        proj_vals = [current.values[-1]] + list(projected)
+        ax.plot(proj_dates, proj_vals, color='#aaaaaa', linestyle='--', linewidth=2.5, label='ROADMAP: Predykcja (Kolejne 5 lat)')
+
+        # 4. Marker "Dzisiaj"
+        ax.axvline(x=current.index[-1], color='#ff0055', linestyle=':', linewidth=2, label='DZISIAJ')
+
+        ax.set_title(f"🥇 GOLD MACRO (5-Year Forecast)\nOdnalazłem fraktal z: {data['match_start']} - {data['match_end']} (Zgodność wzoru: {data['correlation']*100:.1f}%)", color='#FFD700', fontsize=16, fontweight='bold')
+        ax.set_ylabel("Cena Złota (USD/oz)", color=t['text'], fontsize=12)
+
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'])
+
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'], fontsize=11, loc='upper left')
+
+        # Ładne formatowanie osi czasu
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+        
+        plt.tight_layout()
+        return fig
+    
+    # --- NOWA METODA: DANE COMEX (ZŁOTO) ---
+    def get_comex_gold_data(self):
+        """
+        Pobiera oficjalny raport ZŁOTA z CME Group.
+        Wykorzystuje ten sam pancerny kamuflaż TLS i konwersję co srebro.
+        """
+        import pandas as pd
+        import io
+        import random
+        import time
+        
+        try:
+            from curl_cffi import requests as cffi_requests
+        except ImportError:
+            import streamlit as st
+            st.error("Brak biblioteki curl-cffi! Wpisz w terminalu: pip install curl-cffi")
+            return None
+            
+        # Zmieniony URL - celujemy w złoto
+        url = "https://www.cmegroup.com/delivery_reports/Gold_Stocks.xls"
+        
+        impersonations = ["chrome120", "chrome110", "safari15_5", "edge101", "safari15_3"]
+        random.shuffle(impersonations)
+        
+        headers = {
+            "Referer": "https://www.cmegroup.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
+            "Cache-Control": "max-age=0"
+        }
+        
+        df = None
+        
+        for imp in impersonations:
+            try:
+                time.sleep(1.5)
+                response = cffi_requests.get(url, impersonate=imp, headers=headers, timeout=20)
+                
+                if response.status_code == 200:
+                    try:
+                        df = pd.read_excel(io.BytesIO(response.content), skiprows=5, engine='xlrd')
+                        break 
+                    except ImportError:
+                        return None
+            except Exception:
+                continue 
+                
+        if df is None or df.empty:
+            print("Błąd 403: Wszystkie kamuflaże dla złota zawiodły. Odczekaj 15-30 minut.")
+            return None
+            
+        try:
+            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+            df = df.fillna("").astype(str)
+            return df
+        except Exception as e:
+            print(f"Błąd przetwarzania ramki danych złota: {e}")
+            return None
+
+    # --- ZAKTUALIZOWANA METODA: WYKRESY COMEX (ZŁOTO - PAMIĘĆ 30 DNI) ---
+    def plot_comex_gold_charts(self, df):
+        """
+        Generuje wykres słupkowy dla ZŁOTA z pamięcią lokalną 30 dni.
+        Identyczny system co srebro, operujący na osobnym pliku CSV.
+        """
+        import matplotlib.pyplot as plt
+        import streamlit as st
+        import pandas as pd
+        import os
+        import datetime
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+            
+        reg_val = 0.0
+        reg_prev_excel = 0.0
+        elig_val = 0.0
+        
+        # 1. Skanujemy tabelę giełdową
+        for r_idx in range(len(df)):
+            row_texts = [str(x).upper() for x in df.iloc[r_idx, :]]
+            row_str = " ".join(row_texts)
+            
+            if 'TOTAL REGISTERED' in row_str:
+                nums = []
+                for val in df.iloc[r_idx, :]:
+                    try:
+                        clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                        if clean_v and clean_v.lower() != 'nan':
+                            nums.append(float(clean_v))
+                    except:
+                        pass
+                if nums:
+                    reg_val = nums[-1]  
+                    reg_prev_excel = nums[0] if len(nums) > 1 else nums[-1] 
+                    
+            if 'TOTAL ELIGIBLE' in row_str:
+                nums = []
+                for val in df.iloc[r_idx, :]:
+                    try:
+                        clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                        if clean_v and clean_v.lower() != 'nan':
+                            nums.append(float(clean_v))
+                    except:
+                        pass
+                if nums:
+                    elig_val = nums[-1]
+
+        # 2. SYSTEM LOKALNEJ PAMIĘCI ZŁOTA
+        history_file = "comex_gold_history.csv"
+        today_dt = pd.to_datetime(datetime.date.today().isoformat())
+        comparison_val = reg_prev_excel
+        days_tracked = 1
+        
+        if reg_val > 0:
+            if os.path.exists(history_file):
+                try:
+                    hist_df = pd.read_csv(history_file)
+                    hist_df['Date'] = pd.to_datetime(hist_df['Date'])
+                except:
+                    hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+            else:
+                hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+
+            if not hist_df[hist_df['Date'] == today_dt].empty:
+                hist_df.loc[hist_df['Date'] == today_dt, ['Registered', 'Eligible']] = [reg_val, elig_val]
+            else:
+                new_row = pd.DataFrame({'Date': [today_dt], 'Registered': [reg_val], 'Eligible': [elig_val]})
+                hist_df = pd.concat([hist_df, new_row], ignore_index=True)
+
+            hist_df = hist_df.sort_values('Date')
+            hist_df.to_csv(history_file, index=False)
+
+            target_date = today_dt - pd.Timedelta(days=30)
+            past_records = hist_df[hist_df['Date'] <= target_date]
+
+            if not past_records.empty:
+                ref_record = past_records.iloc[-1]
+            else:
+                ref_record = hist_df.iloc[0]
+                
+            comparison_val = ref_record['Registered']
+            days_tracked = (today_dt - ref_record['Date']).days
+            
+            if days_tracked == 0:
+                comparison_val = reg_prev_excel
+                days_tracked = 1
+
+        # 3. SYSTEM OSTRZEGAWCZY
+        is_red_light = False
+        
+        if days_tracked >= 30:
+            period_str = "ostatnich 30 dni"
+        elif days_tracked > 1:
+            period_str = f"ostatnich {days_tracked} dni (buduję bazę do 30 dni)"
+        else:
+            period_str = "ostatniego dnia (pierwszy zapis, zaczynam budować bazę 30-dniową)"
+
+        if comparison_val > 0 and reg_val > 0:
+            if reg_val >= (comparison_val * 1.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa ZŁOTA 'Registered' wzrosła o 50% lub więcej w ciągu {period_str}! (Skok z {int(comparison_val):,} na {int(reg_val):,} uncji). Banki centralne pompują kruszec do systemu!")
+            elif reg_val <= (comparison_val * 0.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa ZŁOTA 'Registered' spadła o 50% lub więcej w ciągu {period_str}! (Drenaż z {int(comparison_val):,} na {int(reg_val):,} uncji). Potężny run na twardy pieniądz, skarbiec świeci pustkami!")
+            else:
+                st.success(f"🟢 ZIELONE ŚWIATŁO: Rezerwa ZŁOTA w normie. Brak odchyleń rzędu 50% w ujęciu {period_str}.")
+        elif reg_val > 0:
+            st.success("🟢 ZIELONE ŚWIATŁO: Rezerwa ZŁOTA w normie.")
+
+        # 4. Rysowanie wykresu
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111)
+        
+        if reg_val > 0 or elig_val > 0:
+            labels = ['Registered (Gotowe do wydania)', 'Eligible (Prywatne / Nie na sprzedaż)']
+            values = [reg_val, elig_val]
+            
+            reg_color = '#ff0000' if is_red_light else '#FFD700' 
+            bars = ax.bar(labels, values, color=[reg_color, '#555555'])
+            
+            for bar in bars:
+                yval = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, yval + (max(values)*0.02),
+                        f"{int(yval):,}".replace(',', ' '), ha='center', va='bottom', 
+                        color=t['text'], fontsize=14, fontweight='bold')
+                        
+            ax.set_title("CAŁKOWITE Zapasy ZŁOTA na COMEX (Podsumowanie)", color='#FFD700', fontsize=16, fontweight='bold')
+            ax.set_ylabel("Uncje Trojańskie", color=t['text'], fontsize=12)
+        else:
+            ax.text(0.5, 0.5, "UWAGA: Brak danych do wyrysowania wykresu.", ha='center', va='center', color='#ff0000', fontsize=14, fontweight='bold')
+
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'], axis='y')
+        
+        plt.tight_layout()
+        return fig
+
+    # --- NOWA METODA: DANE FRACTAL MICRO (ZŁOTO 3 MIESIĄCE) ---
+    def get_gold_micro_fractal_data(self):
+        """
+        Pobiera historię cen złota, izoluje ostatnie 3 miesiące (~63 dni robocze) 
+        i szuka idealnego dopasowania. Zwraca projekcję na kolejne 3 miesiące.
+        """
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        import datetime
+
+        try:
+            df_raw = yf.download("GC=F", period="max", progress=False)
+            if 'Close' in df_raw:
+                df = df_raw['Close'].dropna()
+                if isinstance(df, pd.DataFrame):
+                    df = df.iloc[:, 0]
+            else:
+                return None
+        except Exception as e:
+            print(f"Błąd pobierania danych złota (Micro): {e}")
+            return None
+
+        if len(df) < 500: 
+            return None 
+
+        pattern_days = 63 # ~3 miesiące giełdowe
+        forecast_days = 63 # Projekcja na kolejne 3 miesiące
+
+        current_pattern = df.iloc[-pattern_days:]
+        current_normalized = current_pattern / current_pattern.iloc[0]
+
+        best_corr = -1
+        best_idx = 0
+
+        # Zabezpieczenie przed nałożeniem się na dzisiejsze dane
+        search_end = len(df) - pattern_days - forecast_days - 126 
+
+        curr_vals = current_normalized.values
+
+        for i in range(search_end):
+            historical_slice = df.iloc[i : i + pattern_days]
+            hist_vals = historical_slice.values
+            
+            if hist_vals[0] == 0: continue
+                
+            hist_normalized = hist_vals / hist_vals[0]
+
+            corr = np.corrcoef(curr_vals, hist_normalized)[0, 1]
+            if not np.isnan(corr) and corr > best_corr:
+                best_corr = corr
+                best_idx = i
+
+        matched_slice = df.iloc[best_idx : best_idx + pattern_days]
+        forecast_slice = df.iloc[best_idx + pattern_days : best_idx + pattern_days + forecast_days]
+
+        last_price = current_pattern.iloc[-1]
+        matched_last_price = matched_slice.iloc[-1]
+        multiplier = last_price / matched_last_price
+
+        projected_prices = forecast_slice.values * multiplier
+
+        last_date = current_pattern.index[-1]
+        future_dates = pd.date_range(start=last_date + datetime.timedelta(days=1), periods=forecast_days, freq='B')
+
+        return {
+            'historical': df.iloc[-pattern_days * 4:], # Pobieramy tylko ostatni rok jako tło (zbliżenie)
+            'current_pattern': current_pattern,
+            'future_dates': future_dates,
+            'projected_prices': projected_prices,
+            'match_start': matched_slice.index[0].strftime('%Y-%m-%d'),
+            'match_end': matched_slice.index[-1].strftime('%Y-%m-%d'),
+            'correlation': best_corr
+        }
+
+    # --- NOWA METODA: WYKRES FRACTAL MICRO (ZŁOTO 3 MIESIĄCE) ---
+    def plot_gold_micro_fractal(self, data):
+        """
+        Generuje przybliżony wykres krótkoterminowy (Micro) z projekcją na 3 miesiące.
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(111)
+
+        hist = data['historical']
+        current = data['current_pattern']
+        future_dates = data['future_dates']
+        projected = data['projected_prices']
+
+        # 1. Tło - ostatni rok
+        ax.plot(hist.index, hist.values, color='#555555', alpha=0.5, linewidth=1.5, label='Historia (Ostatni rok)')
+
+        # 2. Obecny wzór (ostatnie 3 miesiące)
+        ax.plot(current.index, current.values, color='#FFD700', linewidth=2.5, label='Ostatnie 3 miesiące (Wzór)')
+
+        # 3. Przyszłość (Roadmap na 3 miesiące)
+        proj_dates = [current.index[-1]] + list(future_dates)
+        proj_vals = [current.values[-1]] + list(projected)
+        ax.plot(proj_dates, proj_vals, color='#aaaaaa', linestyle='--', linewidth=2.5, label='ROADMAP: Predykcja (Kolejne 3 msc)')
+
+        # 4. Marker "Dzisiaj"
+        ax.axvline(x=current.index[-1], color='#ff0055', linestyle=':', linewidth=2, label='DZISIAJ')
+
+        ax.set_title(f"🎯 GOLD MICRO (3-Month Forecast)\nFraktal z: {data['match_start']} - {data['match_end']} (Zgodność: {data['correlation']*100:.1f}%)", color='#FFD700', fontsize=16, fontweight='bold')
+        ax.set_ylabel("Cena Złota (USD/oz)", color=t['text'], fontsize=12)
+
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'])
+
+        ax.legend(facecolor=t['bg'], labelcolor=t['text'], fontsize=11, loc='upper left')
+
+        # Formatowanie osi czasu na miesiące
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        
+        plt.tight_layout()
+        return fig
+
+    # --- NOWA METODA: DANE COMEX (MIEDŹ) ---
+    def get_comex_copper_data(self):
+        """
+        Pobiera oficjalny raport MIEDZI z CME Group.
+        Wykorzystuje pancerny kamuflaż TLS, przygotowany pod silnik xlrd.
+        """
+        import pandas as pd
+        import io
+        import random
+        import time
+        
+        try:
+            from curl_cffi import requests as cffi_requests
+        except ImportError:
+            import streamlit as st
+            st.error("Brak biblioteki curl-cffi! Wpisz w terminalu: pip install curl-cffi")
+            return None
+            
+        # URL dla magazynów Miedzi
+        url = "https://www.cmegroup.com/delivery_reports/Copper_Stocks.xls"
+        
+        impersonations = ["chrome120", "chrome110", "safari15_5", "edge101", "safari15_3"]
+        random.shuffle(impersonations)
+        
+        headers = {
+            "Referer": "https://www.cmegroup.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
+            "Cache-Control": "max-age=0"
+        }
+        
+        df = None
+        
+        for imp in impersonations:
+            try:
+                time.sleep(1.5)
+                response = cffi_requests.get(url, impersonate=imp, headers=headers, timeout=20)
+                
+                if response.status_code == 200:
+                    try:
+                        df = pd.read_excel(io.BytesIO(response.content), skiprows=5, engine='xlrd')
+                        break 
+                    except ImportError:
+                        return None
+            except Exception:
+                continue 
+                
+        if df is None or df.empty:
+            print("Błąd 403: Wszystkie kamuflaże dla miedzi zawiodły. Odczekaj 15-30 minut.")
+            return None
+            
+        try:
+            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+            df = df.fillna("").astype(str)
+            return df
+        except Exception as e:
+            print(f"Błąd przetwarzania ramki danych miedzi: {e}")
+            return None
+
+    # --- NOWA METODA: WYKRESY COMEX (MIEDŹ - PAMIĘĆ 30 DNI) ---
+    def plot_comex_copper_charts(self, df):
+        """
+        Generuje wykres słupkowy dla MIEDZI z pamięcią lokalną 30 dni.
+        Wbudowany system zielonego i czerwonego światła na bazie odchyleń 50%.
+        """
+        import matplotlib.pyplot as plt
+        import streamlit as st
+        import pandas as pd
+        import os
+        import datetime
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+            
+        reg_val = 0.0
+        reg_prev_excel = 0.0
+        elig_val = 0.0
+        
+        for r_idx in range(len(df)):
+            row_texts = [str(x).upper() for x in df.iloc[r_idx, :]]
+            row_str = " ".join(row_texts)
+            
+            if 'TOTAL REGISTERED' in row_str:
+                nums = []
+                for val in df.iloc[r_idx, :]:
+                    try:
+                        clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                        if clean_v and clean_v.lower() != 'nan':
+                            nums.append(float(clean_v))
+                    except:
+                        pass
+                if nums:
+                    reg_val = nums[-1]  
+                    reg_prev_excel = nums[0] if len(nums) > 1 else nums[-1] 
+                    
+            if 'TOTAL ELIGIBLE' in row_str:
+                nums = []
+                for val in df.iloc[r_idx, :]:
+                    try:
+                        clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                        if clean_v and clean_v.lower() != 'nan':
+                            nums.append(float(clean_v))
+                    except:
+                        pass
+                if nums:
+                    elig_val = nums[-1]
+
+        history_file = "comex_copper_history.csv"
+        today_dt = pd.to_datetime(datetime.date.today().isoformat())
+        comparison_val = reg_prev_excel
+        days_tracked = 1
+        
+        if reg_val > 0:
+            if os.path.exists(history_file):
+                try:
+                    hist_df = pd.read_csv(history_file)
+                    hist_df['Date'] = pd.to_datetime(hist_df['Date'])
+                except:
+                    hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+            else:
+                hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+
+            if not hist_df[hist_df['Date'] == today_dt].empty:
+                hist_df.loc[hist_df['Date'] == today_dt, ['Registered', 'Eligible']] = [reg_val, elig_val]
+            else:
+                new_row = pd.DataFrame({'Date': [today_dt], 'Registered': [reg_val], 'Eligible': [elig_val]})
+                hist_df = pd.concat([hist_df, new_row], ignore_index=True)
+
+            hist_df = hist_df.sort_values('Date')
+            hist_df.to_csv(history_file, index=False)
+
+            target_date = today_dt - pd.Timedelta(days=30)
+            past_records = hist_df[hist_df['Date'] <= target_date]
+
+            if not past_records.empty:
+                ref_record = past_records.iloc[-1]
+            else:
+                ref_record = hist_df.iloc[0]
+                
+            comparison_val = ref_record['Registered']
+            days_tracked = (today_dt - ref_record['Date']).days
+            
+            if days_tracked == 0:
+                comparison_val = reg_prev_excel
+                days_tracked = 1
+
+        is_red_light = False
+        
+        if days_tracked >= 30:
+            period_str = "ostatnich 30 dni"
+        elif days_tracked > 1:
+            period_str = f"ostatnich {days_tracked} dni (buduję bazę do 30 dni)"
+        else:
+            period_str = "ostatniego dnia (pierwszy zapis, zaczynam budować bazę 30-dniową)"
+
+        if comparison_val > 0 and reg_val > 0:
+            if reg_val >= (comparison_val * 1.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa MIEDZI 'Registered' wzrosła o 50% lub więcej w ciągu {period_str}! (Skok z {int(comparison_val):,} na {int(reg_val):,}). Twardy przemysł spowalnia i oddaje surowiec do magazynów!")
+            elif reg_val <= (comparison_val * 0.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa MIEDZI 'Registered' spadła o 50% lub więcej w ciągu {period_str}! (Drenaż z {int(comparison_val):,} na {int(reg_val):,}). Ogromny popyt przemysłowy, gospodarka na wysokich obrotach ssie miedź z rynku!")
+            else:
+                st.success(f"🟢 ZIELONE ŚWIATŁO: Rezerwa MIEDZI w normie. Brak odchyleń rzędu 50% w ujęciu {period_str}.")
+        elif reg_val > 0:
+            st.success("🟢 ZIELONE ŚWIATŁO: Rezerwa MIEDZI w normie.")
+
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111)
+        
+        if reg_val > 0 or elig_val > 0:
+            labels = ['Registered (Gotowe do wydania)', 'Eligible (Prywatne / Nie na sprzedaż)']
+            values = [reg_val, elig_val]
+            
+            # Kolor miedzi (#b87333), czerwony przy alarmie
+            reg_color = '#ff0000' if is_red_light else '#b87333' 
+            bars = ax.bar(labels, values, color=[reg_color, '#555555'])
+            
+            for bar in bars:
+                yval = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, yval + (max(values)*0.02),
+                        f"{int(yval):,}".replace(',', ' '), ha='center', va='bottom', 
+                        color=t['text'], fontsize=14, fontweight='bold')
+                        
+            ax.set_title("CAŁKOWITE Zapasy MIEDZI na COMEX (Dr. Copper)", color='#b87333', fontsize=16, fontweight='bold')
+            ax.set_ylabel("Ilość (wg raportu CME)", color=t['text'], fontsize=12)
+        else:
+            ax.text(0.5, 0.5, "UWAGA: Brak danych do wyrysowania wykresu.", ha='center', va='center', color='#ff0000', fontsize=14, fontweight='bold')
+
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'], axis='y')
+        
+        plt.tight_layout()
+        return fig
+
+    # ==========================================================
+    # --- ZAKTUALIZOWANA METODA: DANE COMEX (PLATYNA) ---
+    # ==========================================================
+    def get_comex_platinum_data(self):
+        """
+        Pobiera Platynę z połączonego pliku NYMEX (PA-PL_Stck_Rprt.xls)
+        """
+        import pandas as pd
+        import io
+        import random
+        import time
+        
+        try:
+            from curl_cffi import requests as cffi_requests
+        except ImportError:
+            import streamlit as st
+            st.error("Brak biblioteki curl-cffi! Wpisz w terminalu: pip install curl-cffi")
+            return None
+            
+        # PRAWIDŁOWY URL DLA PLATYNY I PALLADU NA NYMEX
+        url = "https://www.cmegroup.com/delivery_reports/PA-PL_Stck_Rprt.xls"
+        
+        impersonations = ["chrome120", "chrome110", "safari15_5", "edge101", "safari15_3"]
+        random.shuffle(impersonations)
+        
+        headers = {
+            "Referer": "https://www.cmegroup.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
+            "Cache-Control": "max-age=0"
+        }
+        
+        df = None
+        
+        for imp in impersonations:
+            try:
+                time.sleep(1.5)
+                response = cffi_requests.get(url, impersonate=imp, headers=headers, timeout=20)
+                
+                if response.status_code == 200:
+                    try:
+                        df = pd.read_excel(io.BytesIO(response.content), skiprows=5, engine='xlrd')
+                        break 
+                    except ImportError:
+                        return None
+            except Exception:
+                continue 
+                
+        if df is None or df.empty:
+            return None
+            
+        try:
+            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+            df = df.fillna("").astype(str)
+            return df
+        except:
+            return None
+
+    def plot_comex_platinum_charts(self, df):
+        import matplotlib.pyplot as plt
+        import streamlit as st
+        import pandas as pd
+        import os
+        import datetime
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+            
+        reg_val, reg_prev_excel, elig_val = 0.0, 0.0, 0.0
+        
+        for r_idx in range(len(df)):
+            row_texts = [str(x).upper() for x in df.iloc[r_idx, :]]
+            row_str = " ".join(row_texts)
+            
+            # MAGIA: Przerywamy skanowanie, gdy plik wchodzi w sekcję Palladu!
+            if 'PALLADIUM' in row_str:
+                break
+            
+            if 'TOTAL REGISTERED' in row_str:
+                nums = []
+                for val in df.iloc[r_idx, :]:
+                    try:
+                        clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                        if clean_v and clean_v.lower() != 'nan':
+                            nums.append(float(clean_v))
+                    except:
+                        pass
+                if nums:
+                    reg_val = nums[-1]  
+                    reg_prev_excel = nums[0] if len(nums) > 1 else nums[-1] 
+                    
+            if 'TOTAL ELIGIBLE' in row_str:
+                nums = []
+                for val in df.iloc[r_idx, :]:
+                    try:
+                        clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                        if clean_v and clean_v.lower() != 'nan':
+                            nums.append(float(clean_v))
+                    except:
+                        pass
+                if nums:
+                    elig_val = nums[-1]
+
+        history_file = "comex_platinum_history.csv"
+        today_dt = pd.to_datetime(datetime.date.today().isoformat())
+        comparison_val = reg_prev_excel
+        days_tracked = 1
+        
+        if reg_val > 0:
+            if os.path.exists(history_file):
+                try:
+                    hist_df = pd.read_csv(history_file)
+                    hist_df['Date'] = pd.to_datetime(hist_df['Date'])
+                except:
+                    hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+            else:
+                hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+
+            new_row = pd.DataFrame({'Date': [today_dt], 'Registered': [reg_val], 'Eligible': [elig_val]})
+
+            if not hist_df[hist_df['Date'] == today_dt].empty:
+                hist_df.loc[hist_df['Date'] == today_dt, ['Registered', 'Eligible']] = [reg_val, elig_val]
+            else:
+                # CZYSTY KOD: Brak ostrzeżeń Pandas FutureWarning
+                if hist_df.empty:
+                    hist_df = new_row
+                else:
+                    hist_df = pd.concat([hist_df, new_row], ignore_index=True)
+
+            hist_df = hist_df.sort_values('Date')
+            hist_df.to_csv(history_file, index=False)
+
+            target_date = today_dt - pd.Timedelta(days=30)
+            past_records = hist_df[hist_df['Date'] <= target_date]
+            ref_record = past_records.iloc[-1] if not past_records.empty else hist_df.iloc[0]
+            comparison_val = ref_record['Registered']
+            days_tracked = (today_dt - ref_record['Date']).days
+            if days_tracked == 0:
+                comparison_val, days_tracked = reg_prev_excel, 1
+
+        is_red_light = False
+        period_str = "ostatnich 30 dni" if days_tracked >= 30 else (f"ostatnich {days_tracked} dni" if days_tracked > 1 else "ostatniego dnia")
+
+        if comparison_val > 0 and reg_val > 0:
+            if reg_val >= (comparison_val * 1.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa PLATYNY 'Registered' wzrosła o 50% lub więcej w ciągu {period_str}! (Skok z {int(comparison_val):,} na {int(reg_val):,}).")
+            elif reg_val <= (comparison_val * 0.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa PLATYNY 'Registered' spadła o 50% lub więcej w ciągu {period_str}! (Drenaż z {int(comparison_val):,} na {int(reg_val):,}).")
+            else:
+                st.success(f"🟢 ZIELONE ŚWIATŁO: Rezerwa PLATYNY w normie. Brak odchyleń rzędu 50% w ujęciu {period_str}.")
+
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111)
+        
+        if reg_val > 0 or elig_val > 0:
+            labels = ['Registered', 'Eligible']
+            values = [reg_val, elig_val]
+            reg_color = '#ff0000' if is_red_light else '#A0B2C6' 
+            bars = ax.bar(labels, values, color=[reg_color, '#555555'])
+            
+            for bar in bars:
+                yval = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, yval + (max(values)*0.02),
+                        f"{int(yval):,}".replace(',', ' '), ha='center', va='bottom', 
+                        color=t['text'], fontsize=14, fontweight='bold')
+                        
+            ax.set_title("CALKOWITE Zapasy PLATYNY (NYMEX)", color='#A0B2C6', fontsize=16, fontweight='bold')
+            ax.set_ylabel("Uncje Trojanskie", color=t['text'], fontsize=12)
+
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'], axis='y')
+        plt.tight_layout()
+        return fig
+
+    # ==========================================================
+    # --- ZAKTUALIZOWANA METODA: DANE COMEX (PALLAD) ---
+    # ==========================================================
+    def get_comex_palladium_data(self):
+        """
+        Pobiera oficjalny raport PALLADU z CME Group (NYMEX).
+        Plik NYMEX (PA-PL_Stck_Rprt.xls) zawiera dane zarówno dla Platyny, jak i Palladu.
+        Pełna, samodzielna metoda ze wzmocnionym kamuflażem.
+        """
+        import pandas as pd
+        import io
+        import random
+        import time
+        
+        try:
+            from curl_cffi import requests as cffi_requests
+        except ImportError:
+            import streamlit as st
+            st.error("Brak biblioteki curl-cffi! Wpisz w terminalu: pip install curl-cffi")
+            return None
+            
+        # PRAWIDŁOWY URL DLA PLATYNY I PALLADU NA NYMEX
+        url = "https://www.cmegroup.com/delivery_reports/PA-PL_Stck_Rprt.xls"
+        
+        impersonations = ["chrome120", "chrome110", "safari15_5", "edge101", "safari15_3"]
+        random.shuffle(impersonations)
+        
+        headers = {
+            "Referer": "https://www.cmegroup.com/clearing/operations-and-deliveries/nymex-delivery-notices.html",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
+            "Cache-Control": "max-age=0"
+        }
+        
+        df = None
+        
+        for imp in impersonations:
+            try:
+                time.sleep(2.0)
+                response = cffi_requests.get(url, impersonate=imp, headers=headers, timeout=20)
+                
+                if response.status_code == 200:
+                    try:
+                        df = pd.read_excel(io.BytesIO(response.content), skiprows=5, engine='xlrd')
+                        break 
+                    except ImportError:
+                        return None
+            except Exception:
+                continue 
+                
+        if df is None or df.empty:
+            print("Błąd 403: Wszystkie kamuflaże dla palladu zawiodły. Odczekaj 15-30 minut, Twoje IP ma cooldown.")
+            return None
+            
+        try:
+            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+            df = df.fillna("").astype(str)
+            return df
+        except Exception as e:
+            print(f"Błąd przetwarzania ramki danych palladu: {e}")
+            return None
+
+    def plot_comex_palladium_charts(self, df):
+        import matplotlib.pyplot as plt
+        import streamlit as st
+        import pandas as pd
+        import os
+        import datetime
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+            
+        reg_val, reg_prev_excel, elig_val = 0.0, 0.0, 0.0
+        in_palladium_section = False
+        
+        for r_idx in range(len(df)):
+            row_texts = [str(x).upper() for x in df.iloc[r_idx, :]]
+            row_str = " ".join(row_texts)
+            
+            # MAGIA: Czekamy ze skanowaniem, aż plik wejdzie w sekcję Palladu
+            if 'PALLADIUM' in row_str:
+                in_palladium_section = True
+            
+            if in_palladium_section:
+                if 'TOTAL REGISTERED' in row_str:
+                    nums = []
+                    for val in df.iloc[r_idx, :]:
+                        try:
+                            clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                            if clean_v and clean_v.lower() != 'nan':
+                                nums.append(float(clean_v))
+                        except:
+                            pass
+                    if nums:
+                        reg_val = nums[-1]  
+                        reg_prev_excel = nums[0] if len(nums) > 1 else nums[-1] 
+                        
+                if 'TOTAL ELIGIBLE' in row_str:
+                    nums = []
+                    for val in df.iloc[r_idx, :]:
+                        try:
+                            clean_v = str(val).replace(',', '').replace(' ', '').strip()
+                            if clean_v and clean_v.lower() != 'nan':
+                                nums.append(float(clean_v))
+                        except:
+                            pass
+                    if nums:
+                        elig_val = nums[-1]
+
+        history_file = "comex_palladium_history.csv"
+        today_dt = pd.to_datetime(datetime.date.today().isoformat())
+        comparison_val = reg_prev_excel
+        days_tracked = 1
+        
+        if reg_val > 0:
+            if os.path.exists(history_file):
+                try:
+                    hist_df = pd.read_csv(history_file)
+                    hist_df['Date'] = pd.to_datetime(hist_df['Date'])
+                except:
+                    hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+            else:
+                hist_df = pd.DataFrame(columns=['Date', 'Registered', 'Eligible'])
+
+            new_row = pd.DataFrame({'Date': [today_dt], 'Registered': [reg_val], 'Eligible': [elig_val]})
+
+            if not hist_df[hist_df['Date'] == today_dt].empty:
+                hist_df.loc[hist_df['Date'] == today_dt, ['Registered', 'Eligible']] = [reg_val, elig_val]
+            else:
+                # CZYSTY KOD: Brak ostrzeżeń Pandas
+                if hist_df.empty:
+                    hist_df = new_row
+                else:
+                    hist_df = pd.concat([hist_df, new_row], ignore_index=True)
+
+            hist_df = hist_df.sort_values('Date')
+            hist_df.to_csv(history_file, index=False)
+
+            target_date = today_dt - pd.Timedelta(days=30)
+            past_records = hist_df[hist_df['Date'] <= target_date]
+            ref_record = past_records.iloc[-1] if not past_records.empty else hist_df.iloc[0]
+            comparison_val = ref_record['Registered']
+            days_tracked = (today_dt - ref_record['Date']).days
+            if days_tracked == 0:
+                comparison_val, days_tracked = reg_prev_excel, 1
+
+        is_red_light = False
+        period_str = "ostatnich 30 dni" if days_tracked >= 30 else (f"ostatnich {days_tracked} dni" if days_tracked > 1 else "ostatniego dnia")
+
+        if comparison_val > 0 and reg_val > 0:
+            if reg_val >= (comparison_val * 1.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa PALLADU 'Registered' wzrosła o 50% lub więcej w ciągu {period_str}! (Skok z {int(comparison_val):,} na {int(reg_val):,}).")
+            elif reg_val <= (comparison_val * 0.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO! Rezerwa PALLADU 'Registered' spadła o 50% lub więcej w ciągu {period_str}! (Drenaż z {int(comparison_val):,} na {int(reg_val):,}).")
+            else:
+                st.success(f"🟢 ZIELONE ŚWIATŁO: Rezerwa PALLADU w normie. Brak odchyleń rzędu 50% w ujęciu {period_str}.")
+
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111)
+        
+        if reg_val > 0 or elig_val > 0:
+            labels = ['Registered', 'Eligible']
+            values = [reg_val, elig_val]
+            reg_color = '#ff0000' if is_red_light else '#8C92AC' 
+            bars = ax.bar(labels, values, color=[reg_color, '#555555'])
+            
+            for bar in bars:
+                yval = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, yval + (max(values)*0.02),
+                        f"{int(yval):,}".replace(',', ' '), ha='center', va='bottom', 
+                        color=t['text'], fontsize=14, fontweight='bold')
+                        
+            ax.set_title("CALKOWITE Zapasy PALLADU (NYMEX)", color='#8C92AC', fontsize=16, fontweight='bold')
+            ax.set_ylabel("Uncje Trojanskie", color=t['text'], fontsize=12)
+
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'], axis='y')
+        plt.tight_layout()
+        return fig
+
+    # ==========================================================
+    # --- ZAKTUALIZOWANA METODA: DANE SHFE (SZANGHAJ - KLIKANIE W INTERFEJS) ---
+    # ==========================================================
+    def get_shfe_silver_data(self):
+        """
+        Zwiad uderzeniowy. Omija przekierowanie świąteczne (CNY 2026).
+        Selenium wchodzi na stronę główną, szuka chińskiego przycisku "Raport Magazynowy"
+        (仓单日报), fizycznie w niego klika, przełącza karty i kradnie HTML.
+        """
+        import pandas as pd
+        import time
+        import io
+        import streamlit as st
+        
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.service import Service
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.common.by import By
+            from webdriver_manager.chrome import ChromeDriverManager
+        except ImportError:
+            st.error("🚨 Brak silnika pancernego! Wpisz w CMD: pip install selenium webdriver-manager")
+            return pd.DataFrame({"Status": ["FIREWALL_BLOCKED"]})
+
+        print("\n--- ODPALAMY DRONA: TRYB NAWIGACJI RĘCZNEJ ---")
+        
+        options = Options()
+        options.add_argument('--headless') 
+        options.add_argument('--disable-gpu')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+        
+        try:
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+            
+            # Wchodzimy na stronę z Twojego zrzutu ekranu
+            url = "https://www.shfe.com.cn/"
+            driver.get(url)
+            
+            print("Strona główna załadowana. Szukam przycisku '仓单日报' (Raport Magazynowy)...")
+            time.sleep(3) 
+            
+            try:
+                # Szukamy linku po dokładnych chińskich znakach ze zdjęcia
+                element = driver.find_element(By.XPATH, "//a[contains(text(), '仓单日报')]")
+                print("Mam go! Wykonuję fizyczne kliknięcie...")
+                # Skrypt symuluje kliknięcie myszką w przycisk
+                driver.execute_script("arguments[0].click();", element)
+                time.sleep(5)
+            except Exception as e:
+                print("Nie znalazłem przycisku na stronie głównej! Zmienili interfejs.")
+                driver.quit()
+                return pd.DataFrame({"Status": ["FIREWALL_BLOCKED"]})
+            
+            # Jeśli link otworzył się w nowej karcie, musimy przełączyć tam Selenium
+            if len(driver.window_handles) > 1:
+                print("Wykryto nową kartę. Przełączam widok...")
+                driver.switch_to.window(driver.window_handles[-1])
+                time.sleep(5) # Czekamy na załadowanie danych w nowej karcie
+            
+            # Zrzut kontrolny z nowej lokalizacji
+            driver.save_screenshot("smok_zwiad_krok2.png")
+            print("📸 Zrobiono zdjęcie nowej karty (smok_zwiad_krok2.png).")
+            
+            html = driver.page_source
+            driver.quit()
+            
+            try:
+                tables = pd.read_html(io.StringIO(html))
+                
+                for tb in tables:
+                    tb_str = tb.astype(str).apply(lambda x: x.str.lower())
+                    if tb_str.apply(lambda row: row.astype(str).str.contains(r'\bag\b|silver|srebro').any(), axis=1).any():
+                        print("SUKCES! Baza danych zdobyta. Wracamy do bazy.")
+                        tb = tb.fillna("").astype(str)
+                        return tb
+                        
+                print("Błąd: Nowa karta się otworzyła, ale nie ma w niej tabeli (prawdopodobnie komunikat o zamknięciu giełdy na święta).")
+                return pd.DataFrame({"Status": ["FIREWALL_BLOCKED"]})
+            except ValueError:
+                print("Błąd: Strona docelowa załadowana, ale nie zawiera HTML <table>.")
+                return pd.DataFrame({"Status": ["FIREWALL_BLOCKED"]})
+            
+        except Exception as e:
+            print(f"Krytyczny błąd Selenium: {e}")
+            return pd.DataFrame({"Status": ["FIREWALL_BLOCKED"]})
+
+    # ==========================================================
+    # --- NOWA METODA: WYKRESY SHFE (SZANGHAJ - SREBRO) ---
+    # ==========================================================
+    def plot_shfe_silver_charts(self, df):
+        """
+        Generuje wykres dla SHFE Srebro.
+        Przelicza chińskie kilogramy na Uncje Trojańskie dla skali porównawczej z COMEX.
+        Posiada wbudowaną pamięć lokalną 30 dni.
+        """
+        import matplotlib.pyplot as plt
+        import streamlit as st
+        import pandas as pd
+        import os
+        import datetime
+        
+        try:
+            t = self.get_theme_colors()
+        except:
+            t = {'bg': '#0e1117', 'text': '#e0e0e0', 'grid': '#333333'}
+            
+        total_kg = 0.0
+        
+        # 1. Agresywne skanowanie chińskiego JSON'a przerobionego na DataFrame
+        # Szukamy kolumny 'WRTINFO' (Warehouse Receipt Info / Warrants) i omijamy wiersz sumy "Total"
+        for r_idx in range(len(df)):
+            try:
+                wh_name = str(df.iloc[r_idx].get('WHABBRNAME', '')).lower()
+                # Omijamy wiersz z "Total" lub "总计", bo chcemy sami zsumować fizyczne skarbce
+                if 'total' in wh_name or '计' in wh_name:
+                    continue
+                    
+                wrt_val = str(df.iloc[r_idx].get('WRTINFO', '0')).replace(',', '').strip()
+                if wrt_val:
+                    total_kg += float(wrt_val)
+            except:
+                pass
+                
+        # Jeśli nie udało się zsumować pojedynczych, szukamy wiersza "Total" jako fallback
+        if total_kg == 0.0:
+            for r_idx in range(len(df)):
+                wh_name = str(df.iloc[r_idx].get('WHABBRNAME', '')).lower()
+                if 'total' in wh_name or '计' in wh_name:
+                    wrt_val = str(df.iloc[r_idx].get('WRTINFO', '0')).replace(',', '').strip()
+                    try:
+                        total_kg = float(wrt_val)
+                    except:
+                        pass
+
+        # 2. PRZELICZENIE NA UNCJE TROJAŃSKIE (1 kg = 32.1507 oz)
+        total_oz = total_kg * 32.1507
+        
+        # 3. SYSTEM LOKALNEJ PAMIĘCI (30 DNI)
+        history_file = "shfe_silver_history.csv"
+        today_dt = pd.to_datetime(datetime.date.today().isoformat())
+        comparison_val = total_oz
+        days_tracked = 1
+        
+        if total_oz > 0:
+            if os.path.exists(history_file):
+                try:
+                    hist_df = pd.read_csv(history_file)
+                    hist_df['Date'] = pd.to_datetime(hist_df['Date'])
+                except:
+                    hist_df = pd.DataFrame(columns=['Date', 'Total_Oz'])
+            else:
+                hist_df = pd.DataFrame(columns=['Date', 'Total_Oz'])
+
+            new_row = pd.DataFrame({'Date': [today_dt], 'Total_Oz': [total_oz]})
+
+            if not hist_df[hist_df['Date'] == today_dt].empty:
+                hist_df.loc[hist_df['Date'] == today_dt, 'Total_Oz'] = total_oz
+            else:
+                if hist_df.empty:
+                    hist_df = new_row
+                else:
+                    hist_df = pd.concat([hist_df, new_row], ignore_index=True)
+
+            hist_df = hist_df.sort_values('Date')
+            hist_df.to_csv(history_file, index=False)
+
+            target_date = today_dt - pd.Timedelta(days=30)
+            past_records = hist_df[hist_df['Date'] <= target_date]
+            ref_record = past_records.iloc[-1] if not past_records.empty else hist_df.iloc[0]
+            comparison_val = ref_record['Total_Oz']
+            days_tracked = (today_dt - ref_record['Date']).days
+            
+            if days_tracked == 0:
+                comparison_val, days_tracked = total_oz, 1
+
+        # 4. SYSTEM OSTRZEGAWCZY (ZIELONE / CZERWONE ŚWIATŁO)
+        is_red_light = False
+        period_str = "ostatnich 30 dni" if days_tracked >= 30 else (f"ostatnich {days_tracked} dni" if days_tracked > 1 else "ostatniego dnia")
+
+        if comparison_val > 0 and total_oz > 0:
+            if total_oz >= (comparison_val * 1.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO (SHANGHAI)! Skarbce SHFE urosły o 50% lub więcej w ciągu {period_str}! (Skok z {int(comparison_val):,} na {int(total_oz):,} uncji). Potężny import metalu ze Wschodu na Zachód!")
+            elif total_oz <= (comparison_val * 0.5):
+                is_red_light = True
+                st.error(f"🚨 🔴 CZERWONE ŚWIATŁO (SHANGHAI)! Skarbce SHFE skurczyły się o 50% lub więcej w ciągu {period_str}! (Drenaż z {int(comparison_val):,} na {int(total_oz):,} uncji). Chiński przemysł słoneczny brutalnie wyciąga fizyczny metal!")
+            else:
+                st.success(f"🟢 ZIELONE ŚWIATŁO (SHANGHAI): Rezerwa w normie. Brak odchyleń rzędu 50% w ujęciu {period_str}.")
+
+        # 5. Rysowanie wykresu
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111)
+        
+        if total_oz > 0:
+            labels = ['SHFE Srebro (Przeliczone na Uncje)']
+            values = [total_oz]
+            
+            # Kolor szanghajski (Czerwony Wschodu), ciemniejszy przy alarmie
+            reg_color = '#cc0000' if is_red_light else '#ff3333' 
+            bars = ax.bar(labels, values, color=[reg_color])
+            
+            for bar in bars:
+                yval = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, yval + (max(values)*0.02),
+                        f"{int(yval):,}".replace(',', ' '), ha='center', va='bottom', 
+                        color=t['text'], fontsize=14, fontweight='bold')
+                        
+            ax.set_title("FIZYCZNE ZAPASY SREBRA NA SHFE (Szanghaj)", color='#ff3333', fontsize=16, fontweight='bold')
+            ax.set_ylabel("Uncje Trojanskie", color=t['text'], fontsize=12)
+        else:
+            ax.text(0.5, 0.5, "UWAGA: Brak danych (giełda mogła ukryć raport).", ha='center', va='center', color='#ff0000', fontsize=14, fontweight='bold')
+
+        fig.patch.set_facecolor(t['bg'])
+        ax.set_facecolor(t['bg'])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color(t['text'])
+        ax.spines['left'].set_color(t['text'])
+        ax.tick_params(colors=t['text'])
+        ax.grid(True, alpha=0.15, color=t['grid'], axis='y')
+        plt.tight_layout()
+        return fig
     
 def show_ad_splash():
     if 'ad_shown' not in st.session_state: st.session_state['ad_shown'] = False
@@ -15261,7 +17047,7 @@ def main():
     """, unsafe_allow_html=True)
     
     sns.set_theme(style=t['sns_style'])
-    st.title("️ Lambo czy Karton? (v1.3 Full Restore)")
+    st.title("️ Lambo czy Karton? (v1.4 Full Restore Wersja Testowa)")
     
     if st.sidebar.button("🌞/🌚 Zmień Motyw"): app.toggle_theme(); st.rerun()
     # --- NOWA WERSJA (Z PAMIĘCIĄ SESJI) ---
@@ -15883,6 +17669,14 @@ def main():
                 if st.button("🏗️ Cykl Surowcowy"): st.session_state['active_lazy_chart'] = 'commodity_supercycle'
                 if st.button("🥈 Srebro (5 Lat)"): st.session_state['active_lazy_chart'] = 'silver_macro'
                 if st.button("🥈 Srebro (Fraktale)"): st.session_state['active_lazy_chart'] = 'silver_fractal'
+                if st.button("🥈 Srebro COMEX", key="btn_comex"): st.session_state['active_lazy_chart'] = 'comex_silver'
+                if st.button("🥇 Złoto (5 Lat)", key="btn_gold_macro"): st.session_state['active_lazy_chart'] = 'gold_macro'
+                if st.button("🎯 Złoto(Fraktale)", key="btn_gold_micro"): st.session_state['active_lazy_chart'] = 'gold_micro'
+                if st.button("🥇 Złoto COMEX", key="btn_comex_gold"): st.session_state['active_lazy_chart'] = 'comex_gold'
+                if st.button("🥉 Miedź COMEX", key="btn_comex_copper"): st.session_state['active_lazy_chart'] = 'comex_copper'
+                if st.button("💍 Platyna NYMEX", key="btn_comex_platinum"): st.session_state['active_lazy_chart'] = 'comex_platinum'
+                if st.button("⚙️ Pallad NYMEX", key="btn_comex_palladium"): st.session_state['active_lazy_chart'] = 'comex_palladium'
+                #if st.button("🐉 Srebro Smoka", key="btn_shfe_silver"): st.session_state['active_lazy_chart'] = 'shfe_silver'
                 if st.button("⛏️ Gold Diggers"): st.session_state['active_lazy_chart'] = 'gold_miners'
                 if st.button("⚛️ Surowce & Energia"): st.session_state['active_lazy_chart'] = 'hard_assets'
                 if st.button("💧 Hydrogen Power"): st.session_state['active_lazy_chart'] = 'hydrogen_power'
@@ -15935,6 +17729,8 @@ def main():
                 if st.button("🐯 Rising Giants"): st.session_state['active_lazy_chart'] = 'emerging_markets'
                 if st.button("🖥️ El Komputer", key="hpc_btn"): st.session_state['active_lazy_chart'] = 'hpc_supercomputers'
                 if st.button("🔄Detektor Rotacji (ISM)", key="rotation_detector_btn"): st.session_state['active_lazy_chart'] = 'capital_rotation'
+                if st.button("🥬 Gdzie jest kapusta?", key="btn_kapusta"): st.session_state['active_lazy_chart'] = 'gdzie_kapusta'
+                if st.button("🕵 Radar Grubasów", key="btn_deep_scan"): st.session_state['active_lazy_chart'] = 'deep_scan_sp500'
 
                 st.caption("💎 **WYCENA FUNDAMENTALNA**")
                 if st.button("👻 Duch Grahama", key="graham_btn"): st.session_state['active_lazy_chart'] = 'graham_ghost'
@@ -18140,6 +19936,237 @@ def main():
                         """)
                     else:
                         st.error("Błąd pobierania danych do Wskaźnika Rotacji.")
+            elif st.session_state.get('active_lazy_chart') == 'gdzie_kapusta':
+                with st.spinner("Skanuję rynek w poszukiwaniu grubej kapusty... To zajmie kilka sekund."):
+                    kapusta_data = app.get_where_is_the_money_data()
+                    
+                    st.markdown("""
+                    ### 🥬 Gdzie płynie kapitał z S&P500?
+                    
+                    Wall Street nie lubi trzymać gotówki w skarpecie. Kapitał nieustannie rotuje między sektorami, szukając najwyższej stopy zwrotu. Podzieliliśmy gigantów na **3 koszyki narracyjne**. 
+                    
+                    Wykresy są znormalizowane. Każda spółka startuje z poziomu **100%** dokładnie 6 miesięcy temu. Jeśli linia jest na poziomie 140%, to znaczy, że grube ryby wyciągnęły na tej spółce 40% zysku w pół roku. **Patrz tam, gdzie linie najagresywniej odrywają się od bazy!**
+                    """)
+                    
+                    figs = app.plot_kapusta_charts(kapusta_data)
+                    
+                    # Rysujemy 3 wykresy jeden pod drugim
+                    if figs and len(figs) == 3:
+                        st.pyplot(figs[0])
+                        st.info("🧠 **KOSZYK 1:** Jeśli ten wykres wywala w kosmos, to znaczy, że ulica i fundusze wciąż śnią o AI. Tu są największe zwroty, ale i największe ryzyko gwałtownej korekty.")
+                        
+                        st.markdown("---")
+                        
+                        st.pyplot(figs[1])
+                        st.info("🏭 **KOSZYK 2:** To nasza teoria 'Przebudzenia Ciała AI'. Kiedy Big Tech krwawi, inwestorzy parkują kapitał w reaktorach (GE), miedzi i koparkach (CAT). Rosnący trend tutaj to znak twardej gospodarki.")
+                        
+                        st.markdown("---")
+                        
+                        st.pyplot(figs[2])
+                        st.info("🛒 **KOSZYK 3:** Schron. Kiedy na giełdzie leje się krew, kapitał ucieka do leków (LLY) i sieci handlowych (WMT, COST). Jeśli ten wykres wyprzedza resztę, znaczy to, że Smart Money boi się recesji.")
+                    else:
+                        st.error("Wystąpił błąd podczas renderowania koszyków z kapustą.")
+            # --- DO DODANIA W GŁÓWNEJ PĘTLI WYKRESÓW (ELIF) ---
+            elif st.session_state.get('active_lazy_chart') == 'deep_scan_sp500':
+                st.markdown("""
+                ### 🕵️‍♂️ Skaner Prawdy: Prawdziwi Zwycięzcy z całego S&P 500
+                
+                Ten algorytm właśnie w czasie rzeczywistym prześwietlił **wszystkie 500 spółek** z najpotężniejszego amerykańskiego indeksu. Odrzucił szum informacyjny, pogrupował je na nasze 3 kluczowe fronty wojny finansowej (Mózg, Ciało, Schron) i wypluł po **5 absolutnie najbardziej pompowanych aktywów z ostatnich 6 miesięcy.**
+                
+                To tu ukrywają się grube ryby. Jeśli nigdy nie słyszałeś o spółce, która nagle robi +80% w sektorze przemysłowym, to znak, że Smart Money wie coś, czego nie mówi ulica.
+                """)
+                
+                # Dodajemy fajny pasek ładowania, bo ściągnięcie 500 spółek z API trwa ok. 10 sekund
+                with st.spinner("Skanuję 500 największych korporacji w USA... To wymaga chwili. Trzymaj się ramy!"):
+                    deep_scan_data = app.get_deep_scan_sp500_data()
+                    
+                    if deep_scan_data:
+                        figs_deep = app.plot_deep_scan_charts(deep_scan_data)
+                        
+                        if figs_deep and len(figs_deep) == 3:
+                            st.pyplot(figs_deep[0])
+                            st.markdown("---")
+                            st.pyplot(figs_deep[1])
+                            st.markdown("---")
+                            st.pyplot(figs_deep[2])
+                        else:
+                            st.error("Wykresy nie mogły zostać wygenerowane.")
+                    else:
+                        st.error("Błąd sieci. Skaner nie mógł pobrać danych z całego indeksu S&P500.")
+            # --- ZAKTUALIZOWANA PĘTLA WYKRESÓW DLA COMEX (FIX PYARROW I STREAMLIT SYNTAX) ---
+            elif st.session_state.get('active_lazy_chart') == 'comex_silver':
+                st.markdown("### 🥈 Skarbiec COMEX: Zapasy Srebra na żywo")
+                st.markdown("""
+                Udało nam się uzyskać bezpośrednie dojście. Ten algorytm łączy się z serwerami **CME Group (COMEX)**, omija blokady botów i pobiera ich najświeższy, surowy plik Excel z dziennymi raportami magazynowymi.
+                
+                * **Registered (Zarejestrowane):** To jest klucz! To fizyczne srebro, które ma wystawiony tzw. warrant i jest w pełni gotowe do natychmiastowej fizycznej dostawy na rynek. Jeśli ta liczba spada drastycznie, oznacza to tzw. *Silver Squeeze* – brakuje metalu na wydanie.
+                * **Eligible (Kwalifikujące się):** Srebro leżące w tych samych skarbcach (np. u JP Morgan czy Loomis), ale należące do prywatnych właścicieli. Nie jest na sprzedaż, dopóki właściciel nie zmieni jego statusu na Registered.
+                """)
+                
+                with st.spinner("Pobieram i analizuję oficjalne dane ze skarbców CME Group..."):
+                    comex_df = app.get_comex_silver_data()
+                    
+                    if comex_df is not None and not comex_df.empty:
+                        st.success("Dane pobrane prosto z Wall Street! Algorytm wizualizuje właśnie stany magazynowe skarbców.")
+                        
+                        fig = app.plot_comex_silver_charts(comex_df)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                        st.markdown("---")
+                        st.markdown("#### 📄 Surowy Raport Magazynowy (Potwierdzenie Danych)")
+                        
+                        # NAPRAWA: Zmieniono use_container_width na width='stretch'. 
+                        # Dodano astype(str), by naprawić błąd PyArrow (ArrowTypeError).
+                        st.dataframe(comex_df.astype(str), width='stretch', height=400)
+                        
+                        st.info("💡 **PRO TIP:** Zjedź na sam dół tabeli. Znajdziesz tam wiersz **TOTAL**, który podsumowuje całe srebro na giełdzie. Szukaj kolumny z napisem 'Registered'. To tam widać, ile fizycznego metalu naprawdę zostało w systemie na zaspokojenie kontraktów papierowych.")
+                    else:
+                        st.error("Błąd pobierania raportu. Giełda CME używa potężnych firewalli. Spróbuj kliknąć ponownie za kilka minut.")
+            # --- PĘTLA WYKRESÓW DLA ZŁOTA COMEX ---
+            elif st.session_state.get('active_lazy_chart') == 'comex_gold':
+                st.markdown("### 🥇 Skarbiec COMEX: Całkowite Zapasy Złota na żywo")
+                st.markdown("""
+                Dokładnie tak samo jak w przypadku srebra, monitorujemy serce systemu finansowego. Złoto to ostateczna bezpieczna przystań, a jego fizyczne przepływy z wyprzedzeniem pokazują ruchy największych graczy.
+                """)
+                
+                with st.spinner("Pobieram tajne raporty ze skarbców złota CME Group..."):
+                    comex_gold_df = app.get_comex_gold_data()
+                    
+                    if comex_gold_df is not None and not comex_gold_df.empty:
+                        fig = app.plot_comex_gold_charts(comex_gold_df)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                        st.markdown("---")
+                        st.markdown("#### 📄 Surowy Raport Magazynowy Złota")
+                        
+                        st.dataframe(comex_gold_df, width='stretch', height=400)
+                    else:
+                        st.error("UWAGA: Giełda tymczasowo odrzuciła połączenie. Odczekaj chwilę i spróbuj ponownie.")
+            # --- DO DODANIA W GŁÓWNEJ PĘTLI WYKRESÓW (ELIF) ---
+            elif st.session_state.get('active_lazy_chart') == 'gold_macro':
+                st.markdown("### 🥇 GOLD MACRO: Algorytm Fraktalny (Roadmap na 5 lat)")
+                st.markdown("""
+                Program właśnie skanuje dziesięciolecia rynkowej historii cen ZŁOTA, szukając okresu, w którym cena zachowywała się w **korelacji bliskiej 1:1 z ostatnimi 2 latami**. 
+                
+                Gdy algorytm odnajdzie ten unikalny fraktal historyczny, pobiera to, co stało się w ciągu kolejnych 5 lat i nakłada na dzisiejszą cenę. Szara przerywana linia to Twoja matematyczna mapa drogowa na najbliższą dekadę.
+                """)
+                
+                with st.spinner("Przeszukuję historyczne cykle złota... Ładowanie skomplikowanej korelacji Pearsona."):
+                    gold_macro_data = app.get_gold_macro_fractal_data()
+                    
+                    if gold_macro_data is not None:
+                        st.success("Wzór matematyczny odnaleziony! Zobacz, jak historia lubi się powtarzać.")
+                        
+                        fig = app.plot_gold_macro_fractal(gold_macro_data)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                        st.info("💡 **PRO TIP:** Rynki to emocje ludzi, a emocje formują cykle. Szara przerywana linia nie jest wróżeniem z fusów – to twarde matematyczne odzwierciedlenie tego, jak tłum zachował się w przeszłości, gdy znalazł się w identycznej sytuacji technicznej.")
+                    else:
+                        st.error("Błąd sieci. Algorytm nie mógł pobrać wystarczającej historii złota do wyliczenia korelacji.")
+            # --- DO DODANIA W GŁÓWNEJ PĘTLI WYKRESÓW (ELIF) ---
+            elif st.session_state.get('active_lazy_chart') == 'gold_micro':
+                st.markdown("### 🎯 GOLD MICRO: Krótkoterminowy Fraktal (Roadmap na 3 miesiące)")
+                st.markdown("""
+                Wersja taktyczna. Algorytm skupia się wyłącznie na zachowaniu ceny z **ostatnich 3 miesięcy**, wyszukując identyczny wzorzec w historii w skali mikro. Szara przerywana linia pokazuje predykcję na najbliższy kwartał.
+                """)
+                
+                with st.spinner("Skanuję mikro-cykle złota... Szukam dopasowania z ostatnich 90 dni."):
+                    gold_micro_data = app.get_gold_micro_fractal_data()
+                    
+                    if gold_micro_data is not None:
+                        fig = app.plot_gold_micro_fractal(gold_micro_data)
+                        if fig:
+                            st.pyplot(fig)
+                    else:
+                        st.error("Błąd obliczeniowy. Algorytm nie mógł wyliczyć fraktala krótkoterminowego.")
+            # --- PĘTLA WYKRESÓW DLA MIEDZI COMEX ---
+            elif st.session_state.get('active_lazy_chart') == 'comex_copper':
+                st.markdown("### 🥉 Skarbiec COMEX: Doktor Miedź (Zapasy na żywo)")
+                st.markdown("""
+                Dlaczego Wall Street nazywa ten metal "Doktorem"? Ponieważ potrafi on perfekcyjnie zdiagnozować zdrowie globalnej gospodarki. Miedź to kable, budownictwo, elektronika i infrastruktura AI. 
+                Gdy magazyny pustoszeją, oznacza to, że przemysł pompuje kapitał w rozwój na pełnych obrotach.
+                """)
+                
+                with st.spinner("Pobieram tajne raporty ze skarbców Doktora Miedzi..."):
+                    comex_copper_df = app.get_comex_copper_data()
+                    
+                    if comex_copper_df is not None and not comex_copper_df.empty:
+                        fig = app.plot_comex_copper_charts(comex_copper_df)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                        st.markdown("---")
+                        st.markdown("#### 📄 Surowy Raport Magazynowy Miedzi")
+                        st.dataframe(comex_copper_df, width='stretch', height=400)
+                    else:
+                        st.error("UWAGA: Giełda tymczasowo odrzuciła połączenie. Odczekaj chwilę i spróbuj ponownie.")
+            # --- PĘTLA WYKRESÓW DLA PLATYNY ---
+            elif st.session_state.get('active_lazy_chart') == 'comex_platinum':
+                st.markdown("### 💍 Skarbiec NYMEX: Platyna (Zapasy na żywo)")
+                st.markdown("""
+                Platyna to metal strategiczny. Rynek tego kruszcu jest tak mały fizycznie, że każdy duży ruch kapitału zostawia potężne ślady w skarbcach. 
+                Spadki "Registered" na Platynie często wyprzedzają problemy w łańcuchach dostaw dla motoryzacji i nowej energetyki (wodór).
+                """)
+                
+                with st.spinner("Pobieram raporty ze skarbców NYMEX dla Platyny..."):
+                    comex_plat_df = app.get_comex_platinum_data()
+                    
+                    if comex_plat_df is not None and not comex_plat_df.empty:
+                        fig = app.plot_comex_platinum_charts(comex_plat_df)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                        st.markdown("---")
+                        st.markdown("#### 📄 Surowy Raport Magazynowy Platyny")
+                        st.dataframe(comex_plat_df, width='stretch', height=400)
+                    else:
+                        st.error("UWAGA: Giełda tymczasowo odrzuciła połączenie. Odczekaj chwilę i spróbuj ponownie.")
+            # --- PĘTLA WYKRESÓW DLA PALLADU ---
+            elif st.session_state.get('active_lazy_chart') == 'comex_palladium':
+                st.markdown("### ⚙️ Skarbiec NYMEX: Pallad (Zapasy na żywo)")
+                st.markdown("""
+                Pallad to ekstremalnie rzadki i strategiczny metal, krytyczny dla przemysłu motoryzacyjnego. Ze względu na wschodnie łańcuchy dostaw, to tutaj najczęściej widać napięcia geopolityczne objawiające się gwałtownym ssaniem na fizyczny kruszec.
+                """)
+                
+                with st.spinner("Pobieram raporty ze skarbców NYMEX dla Palladu..."):
+                    comex_pal_df = app.get_comex_palladium_data()
+                    
+                    if comex_pal_df is not None and not comex_pal_df.empty:
+                        fig = app.plot_comex_palladium_charts(comex_pal_df)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                        st.markdown("---")
+                        st.markdown("#### 📄 Surowy Raport Magazynowy Palladu")
+                        st.dataframe(comex_pal_df, width='stretch', height=400)
+                    else:
+                        st.error("UWAGA: Giełda tymczasowo odrzuciła połączenie. Odczekaj chwilę i spróbuj ponownie.")
+            # --- PĘTLA WYKRESÓW DLA SHFE (SZANGHAJ) ---
+            elif st.session_state.get('active_lazy_chart') == 'shfe_silver':
+                st.markdown("### 🐉 Wschodni Smok: Skarbce SHFE (Szanghaj)")
+                st.markdown("""
+                To tutaj rozgrywa się najważniejsza wojna finansowa tej dekady. Chińska giełda SHFE "zasysa" zachodnie srebro ze względu na tzw. **Shanghai Premium** (płacą więcej za fizyczny metal niż Zachód na rynkach papierowych).
+                
+                *Nasz system automatycznie przechwytuje ich ukryte pliki JSON i w locie przelicza chińskie kilogramy na zachodnie uncje trojańskie, abyś mógł porównać skalę z COMEX.*
+                """)
+                
+                with st.spinner("Pukam do Wielkiego Muru... Przeszukuję azjatyckie serwery giełdowe..."):
+                    shfe_silver_df = app.get_shfe_silver_data()
+                    
+                    if shfe_silver_df is not None and not shfe_silver_df.empty:
+                        fig = app.plot_shfe_silver_charts(shfe_silver_df)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                        st.markdown("---")
+                        st.markdown("#### 📄 Surowy Zrzut Danych z Szanghaju (JSON -> Tabela)")
+                        st.info("💡 Kolumna **WRTINFO** oznacza ilość towaru (w Chinach raportowaną w kilogramach).")
+                        st.dataframe(shfe_silver_df, width='stretch', height=400)
+                    else:
+                        st.error("UWAGA: Giełda SHFE odrzuciła połączenie lub trwają chińskie święta. Spróbuj ponownie później.")
         # Pobieranie CSV
         if os.path.isfile("market_log.csv"):
             with open("market_log.csv", "rb") as f: st.download_button("📥 Pobierz CSV", f, "lambo.csv")
@@ -18149,10 +20176,10 @@ def main():
 if __name__ == "__main__":
     # Inicjalizacja głównej klasy programu
     app = MarketProbabilityIndex()
-
+    app.render_telegram_contact()
     # --- TUTAJ DAJEMY RENDERY (Zaraz po konfiguracji strony i inicjalizacji klasy) ---
     app.render_app_header() 
     app.render_top_marquee_banner()
 
-    # ... (Tutaj leci reszta Twojego kodu, czyli np. st.sidebar, zakładki tab1, tab2 itd.) ...
+    
     main()
