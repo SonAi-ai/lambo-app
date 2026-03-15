@@ -1,6 +1,6 @@
 streamlit
 pandas
-yfinance
+yfinance>=0.2.37
 matplotlib
 seaborn
 feedparser
@@ -15,3 +15,9 @@ selenium
 webdriver-manager
 html5lib
 lxml
+python-dotenv
+pandas-ta
+python-telegram-bot>=20.8
+nest-asyncio
+scipy
+beautifulsoup4

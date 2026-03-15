@@ -9,10 +9,15 @@ echo.
 echo 🔧 Instaluje biblioteki (requests, streamlit, itp.)...
 py -m pip install -r requirements.txt
 
-:: 2. URUCHOMIENIE PROGRAMU
+:: 2. URUCHOMIENIE SKANERA TELEGRAM (Zwiad przed odpaleniem apki)
 echo.
-echo 🚀 Wszystko gotowe. Odpalam Lambo...
+echo 📡 Uruchamiam Skaner Rynku (Wysylanie raportu na Telegram)...
+py lambo_cron_bot.py
+
+:: 3. URUCHOMIENIE PROGRAMU GŁÓWNEGO (Streamlit)
+echo.
+echo 🚀 Skaner zakonczyl prace. Odpalam Lambo Dashboard...
 py -m streamlit run market_app.py
 
-:: 3. W razie bledow nie zamykaj okna
+:: 4. W razie bledow nie zamykaj okna
 pause
