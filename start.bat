@@ -5,19 +5,14 @@ echo      Wykryto Launcher 'py'. Naprawianie srodowiska...
 echo ========================================================
 echo.
 
-:: 1. INSTALACJA BRAKUJACYCH ELEMENTOW (Kluczowy krok, ktorego zabraklo)
+:: 1. INSTALACJA BRAKUJACYCH ELEMENTOW
 echo 🔧 Instaluje biblioteki (requests, streamlit, itp.)...
 py -m pip install -r requirements.txt
 
-:: 2. URUCHOMIENIE SKANERA TELEGRAM (Zwiad przed odpaleniem apki)
+:: 2. URUCHOMIENIE PROGRAMU GŁÓWNEGO (Streamlit)
 echo.
-echo 📡 Uruchamiam Skaner Rynku (Wysylanie raportu na Telegram)...
-py lambo_cron_bot.py
-
-:: 3. URUCHOMIENIE PROGRAMU GŁÓWNEGO (Streamlit)
-echo.
-echo 🚀 Skaner zakonczyl prace. Odpalam Lambo Dashboard...
+echo 🚀 Odpalam Lambo Dashboard...
 py -m streamlit run market_app.py
 
-:: 4. W razie bledow nie zamykaj okna
+:: 3. W razie bledow nie zamykaj okna
 pause
