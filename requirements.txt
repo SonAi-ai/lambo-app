@@ -16,8 +16,10 @@ webdriver-manager
 html5lib
 lxml
 python-dotenv
-pandas-ta
+pandas-ta-classic
+plotly
 python-telegram-bot>=20.8
 nest-asyncio
 scipy
 beautifulsoup4
+pyTelegramBotAPI

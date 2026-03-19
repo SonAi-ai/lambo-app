@@ -466,9 +466,13 @@ class TelegramSniperBot:
         mvrv = getattr(self.app, 'mvrv', None)
         ism = getattr(self.app, 'ism', None)
 
-        # Jeśli Dron zderza się z 'None', uruchamiamy Twoje funkcje z MarketProbabilityIndex
-        if df is None or not isinstance(df, pd.DataFrame):
-            print("[DRON]: Pusty bak! Uruchamiam protokół awaryjnego pobierania danych z rynku...")
+        # Sprawdzamy wiek danych (3 godziny = 10800 sekund)
+        data_timestamp = getattr(self.app, 'data_timestamp', 0)
+        needs_update = (current_time - data_timestamp) > 10800
+
+        # Jeśli Dron zderza się z 'None' LUB dane są starsze niż 3 godziny
+        if df is None or not isinstance(df, pd.DataFrame) or needs_update:
+            print("[DRON]: Pusty bak lub stare dane! Uruchamiam protokół pobierania danych z rynku...")
             try:
                 # 1. POBIERANIE GŁÓWNYCH DANYCH (Z Twojej funkcji)
                 df, vol = self.app.get_market_data()
@@ -477,15 +481,18 @@ class TelegramSniperBot:
                 if df is not None:
                     mvrv, ism, _ = self.app.calculate_cycle_metrics(df)
                 
-                # 3. TWARDY ZAPIS DO PAMIĘCI APLIKACJI (żeby dron miał to na zawsze)
+                # 3. TWARDY ZAPIS DO PAMIĘCI APLIKACJI
                 self.app.df = df
                 self.app.vol = vol
                 self.app.mvrv = mvrv
                 self.app.ism = ism
+                self.app.data_timestamp = current_time # ZAPIS CZASU DLA DRONA
                 
-                print("[DRON]: Bak pełny. Dane rynkowe (DF, VOL, MVRV, ISM) zostały załadowane do pamięci.")
+                print("[DRON]: Bak pełny. Nowe dane rynkowe zostały załadowane do pamięci.")
+                self.radar_cache.clear() # Czyścimy stare obrazki po pobraniu nowych danych
             except Exception as load_err:
                 print(f"[DRON 🚨]: Błąd twardego ładowania danych: {load_err}")
+                df = getattr(self.app, 'df', None) # Przywracamy to co było w razie awarii API
 
         # Jeśli po próbie ładowania nadal mamy PUSTKĘ, odsyłamy drona do bazy z komunikatem
         if df is None or not isinstance(df, pd.DataFrame):
@@ -1117,10 +1124,24 @@ class TelegramSniperBot:
     def start_listening(self):
         import threading
         print("\n[TELEGRAM MODULE]: Nawiązuję połączenie z centralą na Telegramie...")
-        bot_thread = threading.Thread(target=self.bot.infinity_polling)
-        bot_thread.daemon = True 
+        
+        # --- ZABEZPIECZENIE PRZED KLONOWANIEM (STREAMLIT RERUNS) ---
+        for thread in threading.enumerate():
+            if thread.name == "LamboDron_Thread":
+                print("[TELEGRAM MODULE]: 🟢 Dron już patroluje na orbicie (Wątek aktywny). Pomijam duplikację.")
+                return
+
+        # --- START DRONA W TRYBIE PANCERNYM ---
+        bot_thread = threading.Thread(
+            target=self.bot.infinity_polling, 
+            kwargs={'skip_pending': True, 'timeout': 20},
+            name="LamboDron_Thread"
+        )
+        
+        # KLUCZOWE: False sprawia, że proces NIE UMIERA, gdy Python/Streamlit kończy czytać kod!
+        bot_thread.daemon = False 
         bot_thread.start()
-        print("[TELEGRAM MODULE]: 🟢 Dron połączony i chroniony pamięcią RAM (Cache)!")
+        print("[TELEGRAM MODULE]: 🟢 Dron połączony i chroniony (Tryb Niezniszczalny 24/7)!")
 
 class GPWSniper:
     """Moduł Inżynierii Finansowej GPW - Algorytmiczny Detektor Shortów (Synthetic Data)"""
@@ -5900,6 +5921,7 @@ class MarketProbabilityIndex:
         """
         Metoda renderująca animowany pasek (Marquee).
         Wersja naprawiona: Sztywna wysokość 60px z idealnym, pionowym wycentrowaniem tekstu.
+        Optymalizacja: CSS Animation zamiast przestarzałego tagu marquee (likwiduje drgania).
         """
         import streamlit as st
         
@@ -5909,12 +5931,40 @@ class MarketProbabilityIndex:
         # Łączymy wszystkie elementy listy w jeden długi tekst
         full_banner_text = "".join(texts_list)
         
-        # Kod HTML paska (dodano height: 60px, display: flex i align-items: center dla idealnego wyśrodkowania)
+        # Kod HTML paska z nowoczesną, płynną animacją CSS zamiast tagu marquee
         html_code = f"""
-        <div style="background-color: rgba(20, 20, 20, 0.85); height: 60px; display: flex; align-items: center; border: 1px solid #444; border-radius: 8px; margin-bottom: 20px; padding: 0 10px; overflow: hidden;">
-            <marquee behavior="scroll" direction="left" scrollamount="6" style="color: #e0e0e0; font-size: 15px; font-family: 'Segoe UI Emoji', Arial, sans-serif; line-height: 60px; width: 100%;">
+        <style>
+            @keyframes scroll-top-banner {{
+                0% {{ transform: translateX(0); }}
+                100% {{ transform: translateX(-100%); }}
+            }}
+            .top-ticker-container {{
+                background-color: rgba(20, 20, 20, 0.85); 
+                height: 60px; 
+                display: flex; 
+                align-items: center; 
+                border: 1px solid #444; 
+                border-radius: 8px; 
+                margin-bottom: 20px; 
+                padding: 0 10px; 
+                overflow: hidden;
+                width: 100%;
+                white-space: nowrap;
+            }}
+            .top-ticker-text {{
+                display: inline-block;
+                color: #e0e0e0; 
+                font-size: 15px; 
+                font-family: 'Segoe UI Emoji', Arial, sans-serif; 
+                line-height: 60px;
+                animation: scroll-top-banner 35s linear infinite;
+                padding-left: 100%;
+            }}
+        </style>
+        <div class="top-ticker-container">
+            <div class="top-ticker-text">
                 {full_banner_text}
-            </marquee>
+            </div>
         </div>
         """
         
@@ -14675,12 +14725,11 @@ class MarketProbabilityIndex:
         
         return fig
 
-    # --- ZAKTUALIZOWANA METODA: PASEK NA DOLE (TICKER) ---
     def display_bottom_ticker(self):
         """
         Wyświetla pasek z reklamami na dole ekranu (wysokość 60px).
         Dodano klauzulę prawną (Not Financial Advice) dla bezpieczeństwa.
-        Wersja zoptymalizowana: łączy kuloodporną listę ze starym, dobrym stylem CSS i stopką prawną w Sidebarze.
+        Wersja zoptymalizowana: CSS Animation zamiast przestarzałego tagu marquee (likwiduje drgania).
         """
         import streamlit as st
         
@@ -14700,9 +14749,13 @@ class MarketProbabilityIndex:
         # Łączymy w jeden ciąg
         ad_text = "".join(ad_texts)
 
-        # Styl CSS i HTML paska (wysokość 60px) - zachowany Twój oryginalny wygląd!
+        # Styl CSS i HTML paska (wysokość 60px) - nowoczesna animacja
         ticker_html = f"""
         <style>
+            @keyframes scroll-bottom-ticker {{
+                0% {{ transform: translateX(100vw); }}
+                100% {{ transform: translateX(-100%); }}
+            }}
             .ticker-container {{
                 position: fixed;
                 bottom: 0;
@@ -14718,11 +14771,14 @@ class MarketProbabilityIndex:
                 font-family: 'Courier New', monospace;
                 font-size: 18px;
                 box-shadow: 0px -5px 15px rgba(0, 255, 65, 0.2);
+                overflow: hidden;
+                white-space: nowrap;
             }}
             
-            marquee {{
-                width: 100%;
+            .ticker-text-animated {{
+                display: inline-block;
                 line-height: 60px;
+                animation: scroll-bottom-ticker 40s linear infinite;
             }}
 
             /* Ukrywamy standardową stopkę Streamlit */
@@ -14735,9 +14791,9 @@ class MarketProbabilityIndex:
         </style>
 
         <div class="ticker-container">
-            <marquee loop="infinite" direction="left" scrollamount="10">
+            <div class="ticker-text-animated">
                 {ad_text}
-            </marquee>
+            </div>
         </div>
         """
         
