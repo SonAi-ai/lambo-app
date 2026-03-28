@@ -23,7 +23,7 @@ from math import pi
 from PIL import Image   # <--- WAŻNE: Dodajemy obsługę obrazków
 
 # --- KONFIGURACJA WERSJI ---
-APP_VERSION = "1.6"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
+APP_VERSION = "1.7"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
 # ---------------------------
 
 # --- OBSŁUGA PROPHET ---
@@ -5945,11 +5945,14 @@ class MarketProbabilityIndex:
         """
         return [
             "🚀 <b>SONAI PREMIUM:</b> Odblokuj zdrowie z SonAi! SonAi, Twoje domowe EEG  |  ",
+            "🧠 <b>AKADEMIA NEUROCOACHINGU.:</b>  Od podstaw do certyfikacji. Stany umysłu i EEG. Wiedza o ludzkim umyśle! https://milaorlinska.com/akademia-neurocoachingu  |  ",
             "💜 <b>SILENT ANGEL RETT:</b> Krypto, które realnie zmienia życie. Odkryj charytatywne NFT (silentangelrett.com)  |  ",
-            "🧠 <b>Akademia Neurocoachingu. Stany umysłu i EEG. Wiedza o ludzkim umyśle!:</b> https://milaorlinska.com/akademia-neurocoachingu  |  ",
+            "🧠 <b>AKADEMIA NEUROCOACHINGU.:</b>  Od podstaw do certyfikacji. Stany umysłu i EEG. Wiedza o ludzkim umyśle! https://milaorlinska.com/akademia-neurocoachingu  |  ",
+            "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów, znajdź mnie na grupie TG  |  ",
             "💎 <b>ZASADA #1:</b> Nie tracimy pieniędzy.  |  ",
             "🧠 <b>HEAL-TO-EARN:</b> SonAi - Zarabiaj krypto dbając o zdrowie (Już wkrótce!)  |  ",
             "<span style='color: #ff0055;'>⚠️ <b>RYZYKO:</b> Inwestujesz na własną odpowiedzialność. </span>  |  ",
+            "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów, znajdź mnie na grupie TG  |  ",
             "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji!  |  "
         ]
 
@@ -5993,7 +5996,7 @@ class MarketProbabilityIndex:
                 font-size: 15px; 
                 font-family: 'Segoe UI Emoji', Arial, sans-serif; 
                 line-height: 60px;
-                animation: scroll-top-banner 50s linear infinite;
+                animation: scroll-top-banner 60s linear infinite;
                 padding-left: 100%;
             }}
         </style>
@@ -12161,163 +12164,251 @@ class MarketProbabilityIndex:
         
         return fig
 
-    # --- FIX: SUPERTREND SNIPER (Naprawiona logika inicjalizacji) ---
-    def get_supertrend_data(self):
+    def get_supertrend_data(self, symbol="BTC-USD"):
         try:
-            # 1. Pobieranie danych
-            start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
-            data = yf.download('BTC-USD', start=start_date, progress=False)
+            from datetime import datetime, timedelta
+            import yfinance as yf
+            import pandas as pd
+            import numpy as np
+
+            # Sub-funkcja do liczenia wskaźnika, żeby nie powielać kodu dla 1D i 1H
+            def calculate_st(data, period=10, multiplier=3):
+                if isinstance(data.columns, pd.MultiIndex):
+                    if 'Close' in data.columns.get_level_values(0): 
+                        data.columns = data.columns.get_level_values(0)
+                    elif 'Close' in data.columns.get_level_values(1): 
+                        data.columns = data.columns.get_level_values(1)
+                
+                data.columns = [c.capitalize() for c in data.columns]
+                df = data[['High', 'Low', 'Close']].copy()
+                df = df[~df.index.duplicated(keep='first')]
+
+                df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
+                df['tr0'] = abs(df['High'] - df['Low'])
+                df['tr1'] = abs(df['High'] - df['Close'].shift(1))
+                df['tr2'] = abs(df['Low'] - df['Close'].shift(1))
+                df['TR'] = df[['tr0', 'tr1', 'tr2']].max(axis=1)
+                df['ATR'] = df['TR'].rolling(period).mean()
+                
+                df['hl2'] = (df['High'] + df['Low']) / 2
+                df['basic_upper'] = df['hl2'] + (multiplier * df['ATR'])
+                df['basic_lower'] = df['hl2'] - (multiplier * df['ATR'])
+                
+                df['final_upper'] = 0.0
+                df['final_lower'] = 0.0
+                df['supertrend'] = 0.0
+                df['trend'] = True 
+                
+                start_idx = period
+                df.iloc[:start_idx, df.columns.get_loc('final_upper')] = df['basic_upper'].iloc[:start_idx]
+                df.iloc[:start_idx, df.columns.get_loc('final_lower')] = df['basic_lower'].iloc[:start_idx]
+
+                for i in range(start_idx, len(df)):
+                    curr = df.index[i]
+                    prev = df.index[i-1]
+                    
+                    if df.at[curr, 'basic_upper'] < df.at[prev, 'final_upper'] or df.at[prev, 'Close'] > df.at[prev, 'final_upper']:
+                        df.at[curr, 'final_upper'] = df.at[curr, 'basic_upper']
+                    else:
+                        df.at[curr, 'final_upper'] = df.at[prev, 'final_upper']
+                    
+                    if df.at[curr, 'basic_lower'] > df.at[prev, 'final_lower'] or df.at[prev, 'Close'] < df.at[prev, 'final_lower']:
+                        df.at[curr, 'final_lower'] = df.at[curr, 'basic_lower']
+                    else:
+                        df.at[curr, 'final_lower'] = df.at[prev, 'final_lower']
+                    
+                    if df.at[curr, 'Close'] > df.at[prev, 'final_upper']:
+                        df.at[curr, 'trend'] = True
+                    elif df.at[curr, 'Close'] < df.at[prev, 'final_lower']:
+                        df.at[curr, 'trend'] = False
+                    else:
+                        df.at[curr, 'trend'] = df.at[prev, 'trend']
+                    
+                    df.at[curr, 'supertrend'] = df.at[curr, 'final_lower'] if df.at[curr, 'trend'] else df.at[curr, 'final_upper']
+
+                return df.iloc[period:]
+
+            # 1. Pobieranie danych SUPERMACRO (Świece 1-Dniowe, 6 miesięcy wstecz)
+            start_supermacro = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+            data_1d = yf.download(symbol, start=start_supermacro, interval="1d", progress=False)
             
-            if data.empty:
+            # 2. Pobieranie danych MACRO i TRADER (Świece 1-Godzinne, 30 dni wstecz)
+            start_micro = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+            data_1h = yf.download(symbol, start=start_micro, interval="1h", progress=False)
+            
+            if data_1h.empty:
                 return None
-
-            # Naprawa MultiIndex (Kluczowe dla stabilności)
-            if isinstance(data.columns, pd.MultiIndex):
-                if 'Close' in data.columns.get_level_values(0): 
-                    data.columns = data.columns.get_level_values(0)
-                elif 'Close' in data.columns.get_level_values(1): 
-                    data.columns = data.columns.get_level_values(1)
-            
-            data.columns = [c.capitalize() for c in data.columns]
-            df = data[['High', 'Low', 'Close']].copy()
-            df = df[~df.index.duplicated(keep='first')]
-
-            # 2. Wskaźniki bazowe
-            df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
-            period = 10
-            multiplier = 3
-            
-            # ATR
-            df['tr0'] = abs(df['High'] - df['Low'])
-            df['tr1'] = abs(df['High'] - df['Close'].shift(1))
-            df['tr2'] = abs(df['Low'] - df['Close'].shift(1))
-            df['TR'] = df[['tr0', 'tr1', 'tr2']].max(axis=1)
-            df['ATR'] = df['TR'].rolling(period).mean()
-            
-            df['hl2'] = (df['High'] + df['Low']) / 2
-            df['basic_upper'] = df['hl2'] + (multiplier * df['ATR'])
-            df['basic_lower'] = df['hl2'] - (multiplier * df['ATR'])
-            
-            # Inicjalizacja kolumn zerami
-            df['final_upper'] = 0.0
-            df['final_lower'] = 0.0
-            df['supertrend'] = 0.0
-            df['trend'] = True 
-            
-            # Początkowy punkt po wyliczeniu ATR (indeks 'period')
-            start_idx = period
-            df.iloc[:start_idx, df.columns.get_loc('final_upper')] = df['basic_upper'].iloc[:start_idx]
-            df.iloc[:start_idx, df.columns.get_loc('final_lower')] = df['basic_lower'].iloc[:start_idx]
-
-            # PĘTLA OBLICZENIOWA - Start od punktu, gdzie ATR jest gotowy
-            for i in range(start_idx, len(df)):
-                curr = df.index[i]
-                prev = df.index[i-1]
                 
-                # Upper Band
-                if df.at[curr, 'basic_upper'] < df.at[prev, 'final_upper'] or df.at[prev, 'Close'] > df.at[prev, 'final_upper']:
-                    df.at[curr, 'final_upper'] = df.at[curr, 'basic_upper']
-                else:
-                    df.at[curr, 'final_upper'] = df.at[prev, 'final_upper']
+            df_supermacro = calculate_st(data_1d) if not data_1d.empty else None
+            df_micro = calculate_st(data_1h)
+            
+            # Magia Pandas: przemycamy tabelę 1D wewnątrz atrybutów tabeli 1H, żeby nie zepsuć interfejsu
+            if df_supermacro is not None:
+                df_micro.attrs['macro_df'] = df_supermacro
                 
-                # Lower Band
-                if df.at[curr, 'basic_lower'] > df.at[prev, 'final_lower'] or df.at[prev, 'Close'] < df.at[prev, 'final_lower']:
-                    df.at[curr, 'final_lower'] = df.at[curr, 'basic_lower']
-                else:
-                    df.at[curr, 'final_lower'] = df.at[prev, 'final_lower']
-                
-                # Trend
-                if df.at[curr, 'Close'] > df.at[prev, 'final_upper']:
-                    df.at[curr, 'trend'] = True
-                elif df.at[curr, 'Close'] < df.at[prev, 'final_lower']:
-                    df.at[curr, 'trend'] = False
-                else:
-                    df.at[curr, 'trend'] = df.at[prev, 'trend']
-                
-                # Final SuperTrend
-                df.at[curr, 'supertrend'] = df.at[curr, 'final_lower'] if df.at[curr, 'trend'] else df.at[curr, 'final_upper']
-
-            return df.iloc[period:]
+            return df_micro
 
         except Exception as e:
+            import streamlit as st
             st.error(f"Błąd SuperTrend: {e}")
             return None
 
     def plot_supertrend(self, df):
         """
-        Rysuje wykres SuperTrend z ceną BTC, wypełnieniem stref 
-        oraz strzałkami sygnałów wejścia (BUY) i wyjścia (SELL).
+        Rysuje TRZY wykresy SuperTrend jeden pod drugim:
+        1. SUPERMACRO: Świece 1D, 6 miesięcy w tył (Główny trend)
+        2. MACRO: Świece 1H, 30 dni w tył (Krótszy trend)
+        3. TRADER (Live Action): Świece 1H, kilka dni w tył (Snajperskie wejścia)
         """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from datetime import timedelta
+        
         if df is None or df.empty: return None
         
+        df_micro = df
+        df_supermacro = df.attrs.get('macro_df', df_micro) # Wyciągamy ukryte dane 1D
+        
         t = self.get_theme_colors()
-        fig = plt.figure(figsize=(12, 7))
-        ax1 = fig.add_subplot(111)
+        # Tworzymy 3 panele jeden pod drugim, wysokość 18 (żeby wszystko było czytelne)
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 18), gridspec_kw={'height_ratios': [1, 1, 1]})
         
-        # 1. PRZYGOTOWANIE DANYCH
-        # Upewniamy się, że trend jest typu bool
-        trend_up = df['trend'].astype(bool)
-        
-        # Rozdzielamy SuperTrend na dwie linie, żeby nie było pionowych kresek przy zmianie
-        st_up = df['supertrend'].copy()
-        st_up[~trend_up] = np.nan
-        
-        st_down = df['supertrend'].copy()
-        st_down[trend_up] = np.nan
-        
-        # 2. RYSOWANIE CENY I LINII TRENDU
-        ax1.plot(df.index, df['Close'], color='white', linewidth=1.2, label='Cena BTC', alpha=0.8)
-        ax1.plot(df.index, st_up, color='#00ff55', linewidth=2.5, label='SuperTrend Wzrostowy')
-        ax1.plot(df.index, st_down, color='#ff0055', linewidth=2.5, label='SuperTrend Spadkowy')
+        # Uniwersalna funkcja rysująca, żeby nie pisać tego samego 3 razy
+        def draw_st_axis(ax, data, title):
+            trend_up = data['trend'].astype(bool)
+            st_up = data['supertrend'].copy()
+            st_up[~trend_up] = np.nan
+            st_down = data['supertrend'].copy()
+            st_down[trend_up] = np.nan
+            
+            sig = data['trend'].astype(int).diff()
+            buy_signals = data[sig == 1]
+            sell_signals = data[sig == -1]
+            
+            ax.plot(data.index, data['Close'], color='white', linewidth=1.2, label='Cena BTC', alpha=0.8)
+            ax.plot(data.index, st_up, color='#00ff55', linewidth=2.5, label='Wsparcie (LONG)')
+            ax.plot(data.index, st_down, color='#ff0055', linewidth=2.5, label='Opór (SHORT)')
 
-        # 3. WYPEŁNIENIE STREFY (Wstęga)
-        ax1.fill_between(df.index, df['supertrend'], df['Close'], where=trend_up, color='#00ff55', alpha=0.1)
-        ax1.fill_between(df.index, df['supertrend'], df['Close'], where=~trend_up, color='#ff0055', alpha=0.1)
+            ax.fill_between(data.index, data['supertrend'], data['Close'], where=trend_up, color='#00ff55', alpha=0.1)
+            ax.fill_between(data.index, data['supertrend'], data['Close'], where=~trend_up, color='#ff0055', alpha=0.1)
 
-        # --- 4. DETEKCJA I RYSOWANIE STRZAŁEK (FIX) ---
-        # Zamieniamy True/False na 1/0 i liczymy różnicę między dniami
-        #  1 = Zmiana z Bear na Bull (BUY)
-        # -1 = Zmiana z Bull na Bear (SELL)
-        sig = df['trend'].astype(int).diff()
-        
-        buy_signals = df[sig == 1]
-        sell_signals = df[sig == -1]
-        
-        # Strzałki BUY (Zielone trójkąty w górę)
-        ax1.scatter(buy_signals.index, buy_signals['supertrend'] * 0.97, 
-                    marker='^', color='#00ff55', s=150, zorder=20, 
-                    edgecolors='white', linewidth=1, label='Sygnał KUPNA (Buy)')
-        
-        # Strzałki SELL (Czerwone trójkąty w dół)
-        ax1.scatter(sell_signals.index, sell_signals['supertrend'] * 1.03, 
-                    marker='v', color='#ff0055', s=150, zorder=20, 
-                    edgecolors='white', linewidth=1, label='Sygnał SPRZEDAŻY (Sell)')
+            ax.scatter(buy_signals.index, buy_signals['supertrend'] * 0.98, 
+                       marker='^', color='#00ff55', s=150, zorder=20, 
+                       edgecolors='white', linewidth=1, label='Sygnał KUPNA (Buy)')
+            
+            ax.scatter(sell_signals.index, sell_signals['supertrend'] * 1.02, 
+                       marker='v', color='#ff0055', s=150, zorder=20, 
+                       edgecolors='white', linewidth=1, label='Sygnał SPRZEDAŻY (Sell)')
 
-        # 5. KOSMETYKA
-        ax1.set_title("SUPERTREND SNIPER: Sygnały Wejścia/Wyjścia", fontsize=16, color=t['text'], fontweight='bold')
-        ax1.set_facecolor(t['bg'])
-        fig.patch.set_facecolor(t['bg'])
+            ax.set_facecolor(t['bg'])
+            ax.grid(True, alpha=0.1, color=t['grid'])
+            ax.tick_params(colors=t['text'])
+            
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['bottom'].set_color(t['text'])
+            ax.spines['left'].set_color(t['text'])
+            
+            ax.set_title(title, fontsize=16, color=t['text'], fontweight='bold')
+            ax.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
+
+        # -------------------------------------------------------------------
+        # WYKRES 1: SUPERMACRO (Świece 1-Dniowe, Ostatnie 6 Miesięcy)
+        # -------------------------------------------------------------------
+        draw_st_axis(ax1, df_supermacro, "1. PERSPEKTYWA SUPERMACRO (Świece 1D | Ostatnie 6 Miesięcy)")
+        ax1.set_xlim(left=df_supermacro.index[0], right=df_supermacro.index[-1])
+        ax1.set_ylim(df_supermacro['Low'].min() * 0.95, df_supermacro['High'].max() * 1.05)
+
+        # -------------------------------------------------------------------
+        # WYKRES 2: MACRO (Świece 1-Godzinne, Pełne 30 Dni)
+        # -------------------------------------------------------------------
+        draw_st_axis(ax2, df_micro, "2. PERSPEKTYWA MACRO (Świece 1H | Ostatnie 30 Dni)")
+        ax2.set_xlim(left=df_micro.index[0], right=df_micro.index[-1])
+        ax2.set_ylim(df_micro['Low'].min() * 0.95, df_micro['High'].max() * 1.05)
+
+        # -------------------------------------------------------------------
+        # WYKRES 3: TRADER (Świece 1-Godzinne, Zbliżenie na ostatnie akcje)
+        # -------------------------------------------------------------------
+        draw_st_axis(ax3, df_micro, "3. LIVE ACTION TRADER (Świece 1H | Zbliżenie Snajperskie)")
         
-        # Skalowanie osi (Zoom na ostatnie 6 miesięcy dla lepszej widoczności sygnałów)
-        cutoff = df.index[-1] - timedelta(days=180)
-        ax1.set_xlim(left=cutoff)
+        time_delta = df_micro.index[-1] - df_micro.index[0]
+        if time_delta.days > 20:
+            cutoff = df_micro.index[-1] - timedelta(days=5) 
+        elif time_delta.days > 5:
+            cutoff = df_micro.index[-1] - timedelta(days=2) 
+        else:
+            cutoff = df_micro.index[0]
+            
+        ax3.set_xlim(left=cutoff, right=df_micro.index[-1])
         
-        # Dopasowanie skali Y do widocznego zakresu
-        visible_data = df[df.index >= cutoff]
+        visible_data = df_micro[df_micro.index >= cutoff]
         if not visible_data.empty:
-            ax1.set_ylim(visible_data['Low'].min() * 0.95, visible_data['High'].max() * 1.05)
+            ax3.set_ylim(visible_data['Low'].min() * 0.98, visible_data['High'].max() * 1.02)
 
-        ax1.grid(True, alpha=0.1, color=t['grid'])
-        ax1.tick_params(colors=t['text'])
-        ax1.legend(loc='upper left', facecolor=t['bg'], labelcolor=t['text'], fontsize=9)
-        
-        # Usuwamy ramki dla nowoczesnego wyglądu
-        ax1.spines['top'].set_visible(False)
-        ax1.spines['right'].set_visible(False)
-        ax1.spines['bottom'].set_color(t['text'])
-        ax1.spines['left'].set_color(t['text'])
-        
+        # -------------------------------------------------------------------
+        # FINALIZACJA WYKRESU
+        # -------------------------------------------------------------------
+        fig.patch.set_facecolor(t['bg'])
+        plt.subplots_adjust(hspace=0.35)
+
         return fig
+
+    @st.fragment
+    def render_supertrend_garage(self):
+        """
+        Garaż Supertrendu: Wyodrębniony moduł z własnym formularzem i polem wyszukiwania.
+        Zabezpieczony formularzem przed przeładowaniem API. Obsługuje dowolne rynki.
+        """
+        import streamlit as st
+
+        st.divider()
+        st.markdown("## 🏎️ GARAŻ SUPERTRENDU: Analiza Multi-Timeframe")
+        st.info("Wpisz dowolny ticker (np. BTC-USD, ETH-USD, NVDA, TSLA, SPY) i wciśnij przycisk, aby wygenerować profesjonalną analizę 3-poziomową.")
+
+        # Zamykamy wszystko w bezpiecznym formularzu
+        with st.form(key="supertrend_garage_form"):
+            
+            # Wstrzykujemy czarny styl przycisku z zielonym, neonowym hoverem dla urozmaicenia
+            st.markdown("""
+                <style>
+                div[data-testid="stFormSubmitButton"] > button {
+                    background-color: #000000 !important;
+                    color: #ffffff !important;
+                    border: 1px solid #333333 !important;
+                    transition: all 0.3s ease-in-out;
+                }
+                div[data-testid="stFormSubmitButton"] > button:hover {
+                    border: 1px solid #00ff55 !important;
+                    color: #00ff55 !important;
+                    box-shadow: 0 0 10px rgba(0, 255, 85, 0.3) !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                # Domyślnie ładujemy BTC-USD, ale trader może tu wpisać cokolwiek
+                ticker_input = st.text_input("ZAPARKUJ TICKER:", value="BTC-USD", key="st_ticker_input").upper().strip()
+            
+            submit_btn = st.form_submit_button("Analizuj SuperTrend 🎯")
+
+        # Kod wykona się TYLKO gdy ktoś kliknie przycisk (Ochrona API)
+        if submit_btn:
+            if not ticker_input:
+                st.warning("Wpisz poprawny ticker giełdowy!")
+                return
+
+            with st.spinner(f"Łączenie z rynkiem i kalibracja celowników dla {ticker_input}..."):
+                # Pobieramy dane używając Twojej ukrytej logiki Multi-Timeframe
+                df = self.get_supertrend_data(symbol=ticker_input)
+                
+                if df is None or df.empty:
+                    st.error(f"❌ Brak danych dla '{ticker_input}'. Sprawdź poprawność nazwy tickera (dla krypto używaj końcówki '-USD', np. ETH-USD).")
+                else:
+                    # Jeśli wszystko ok, rysujemy 3 piętra wykresów
+                    fig = self.plot_supertrend(df)
+                    if fig:
+                        st.pyplot(fig)
 
     # --- PRO TOOLS: TECH WAR (INTC vs AMD vs NVDA vs BTC) ---
     def get_tech_war_data(self):
@@ -14969,15 +15060,17 @@ class MarketProbabilityIndex:
         
         # Używamy bezpiecznej listy tekstów (chroni przed błędami składniowymi)
         ad_texts = [
-            "🚀 <b>SONAI PREMIUM:</b> Odblokuj Zdrowie psychiczne z SonAi!  |  ",
-            "🧠 <b>Akademia Neurocoachingu. Stany umysłu i EEG. Wiedza o ludzkim umyśle!:</b> https://milaorlinska.com/akademia-neurocoachingu  |  ",
+            "🚀 <b>SONAI PREMIUM:</b> Odblokuj Zdrowie z SonAi! SonAi to Twoje domowe EEG  |  ",
+            "🧠 <b>AKADEMIA NEUROCOACHINGU.:</b>  Od podstaw do certyfikacji. Stany umysłu i EEG. Wiedza o ludzkim umyśle! https://milaorlinska.com/akademia-neurocoachingu  |  ",
             "👼 <b>SILENT ANGEL NFT:</b> Dołącz do rewolucji dobra! Wesprzyj rodziny walczące z rzadką chorobą i zdobądź unikalne NFT (silentangelrett.com).  |  ",
+            "🧠 <b>AKADEMIA NEUROCOACHINGU.:</b>  Od podstaw do certyfikacji. Stany umysłu i EEG. Wiedza o ludzkim umyśle! https://milaorlinska.com/akademia-neurocoachingu  |  ",
+            "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów, znajdź mnie na grupie TG  |  ",
             "<span style='color: #ff0055;'>⚠️ <b>NOT FINANCIAL ADVICE:</b> Wszystkie dane mają charakter wyłącznie edukacyjny. </span>  |  ",
             "💎 <b>ZASADA #1:</b> Nie tracimy pieniędzy.  |  ",
             "🧠 <b>HEAL-TO-EARN:</b> SonAi-Zarabiaj krypto dbając o zdrowie (Już wkrótce!)  |  ",
             "<span style='color: #ff0055;'>⚠️ <b>RYZYKO:</b> Inwestujesz na własną odpowiedzialność. </span>  |  ",
             "📊 <b>NOWOŚĆ:</b> Sprawdź zakładkę 'Sezonowość' i zobacz idealny rok BTC.  |  ",
-            "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów  |  ",
+            "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów, znajdź mnie na grupie TG  |  ",
             "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji! "
         ]
         
@@ -15013,7 +15106,7 @@ class MarketProbabilityIndex:
             .ticker-text-animated {{
                 display: inline-block;
                 line-height: 60px;
-                animation: scroll-bottom-ticker 60s linear infinite;
+                animation: scroll-bottom-ticker 100s linear infinite;
             }}
 
             /* Ukrywamy standardową stopkę Streamlit */
@@ -26333,6 +26426,7 @@ class MarketProbabilityIndex:
         Sekcja wizualna: Wyświetla interfejs detektora anomalii i rysuje dedykowany wykres.
         Wspiera do 10 anomalii jednocześnie oraz zawiera dedykowany panel dolny dla wolumenu.
         Zaktualizowano o najpotężniejsze sygnały dna MACRO (Mayer, RSI Cap, Wyckoff).
+        WPROWADZONO ZABEZPIECZENIE (st.form) oraz dedykowany, czarny styl przycisku.
         """
         import streamlit as st
         import matplotlib.pyplot as plt
@@ -26367,17 +26461,40 @@ class MarketProbabilityIndex:
                 st.markdown("### 📋 Baza Danych Anomalii")
                 anomaly_options = [a['display'] for a in anomalies]
                 
-                selected_displays = st.multiselect(
-                    "Wybierz max 10 zdarzeń do wizualizacji:", 
-                    options=anomaly_options,
-                    max_selections=10,
-                    key="anomaly_multi"
-                )
+                # --- ZABEZPIECZENIE SERWERA: FORMULARZ + CZARNY PRZYCISK ---
+                with st.form(key="anomaly_form"):
+                    
+                    # Wstrzykiwanie stylów CSS dla przycisku w tym formularzu
+                    st.markdown("""
+                        <style>
+                        div[data-testid="stFormSubmitButton"] > button {
+                            background-color: #000000 !important;
+                            color: #ffffff !important;
+                            border: 1px solid #333333 !important;
+                            transition: all 0.3s ease-in-out;
+                        }
+                        div[data-testid="stFormSubmitButton"] > button:hover {
+                            border: 1px solid #ff00ff !important;
+                            color: #ff00ff !important;
+                            box-shadow: 0 0 10px rgba(255, 0, 255, 0.3) !important;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+
+                    selected_displays = st.multiselect(
+                        "Wybierz max 10 zdarzeń do wizualizacji:", 
+                        options=anomaly_options,
+                        max_selections=10,
+                        key="anomaly_multi"
+                    )
+                    
+                    # Guzik wymuszający renderowanie dopiero po ułożeniu listy
+                    submit_button = st.form_submit_button(label="Aktualizuj Wykres 🚀")
                 
                 selected_anomalies = [a for a in anomalies if a['display'] in selected_displays]
                 
                 if not selected_anomalies:
-                    st.info("Wybierz zdarzenia z listy powyżej, by zobaczyć je na wykresie.")
+                    st.info("Wybierz zdarzenia z listy powyżej i kliknij 'Aktualizuj Wykres', by zobaczyć je na wykresie.")
 
         with c2:
             st.markdown("### 📈 Rentgen Anomalii z Wolumenem")
@@ -30476,6 +30593,7 @@ def main():
     app.render_opportunity_scanners()
     app.render_omega_terminal()
     app.render_anomaly_hunter()
+    app.render_supertrend_garage()
     app.display_bottom_ticker()
 
 # ==========================================================
