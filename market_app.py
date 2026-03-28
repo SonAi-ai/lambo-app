@@ -23,7 +23,7 @@ from math import pi
 from PIL import Image   # <--- WAŻNE: Dodajemy obsługę obrazków
 
 # --- KONFIGURACJA WERSJI ---
-APP_VERSION = "1.5"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
+APP_VERSION = "1.6"  # Zmień na 1.1, 1.2 itd. jak dodasz coś nowego
 # ---------------------------
 
 # --- OBSŁUGA PROPHET ---
@@ -1123,6 +1123,7 @@ class TelegramSniperBot:
 
     def start_listening(self):
         import threading
+        import time
         print("\n[TELEGRAM MODULE]: Nawiązuję połączenie z centralą na Telegramie...")
         
         # --- ZABEZPIECZENIE PRZED KLONOWANIEM (STREAMLIT RERUNS) ---
@@ -1131,10 +1132,20 @@ class TelegramSniperBot:
                 print("[TELEGRAM MODULE]: 🟢 Dron już patroluje na orbicie (Wątek aktywny). Pomijam duplikację.")
                 return
 
-        # --- START DRONA W TRYBIE PANCERNYM ---
+        # --- START DRONA W TRYBIE PANCERNYM (PĘTLA WSKRZESZAJĄCA) ---
+        def immortal_polling():
+            while True:
+                try:
+                    print("[TELEGRAM MODULE]: Uruchamiam radar...")
+                    # skip_pending=True zapobiega spamowi starych komend po restarcie
+                    self.bot.infinity_polling(skip_pending=True, timeout=20)
+                except Exception as e:
+                    print(f"[DRON AWARYJNE LĄDOWANIE]: Błąd połączenia API - {e}")
+                    print("[DRON RESTART]: Odbudowa połączenia za 10 sekund...")
+                    time.sleep(10)
+
         bot_thread = threading.Thread(
-            target=self.bot.infinity_polling, 
-            kwargs={'skip_pending': True, 'timeout': 20},
+            target=immortal_polling, 
             name="LamboDron_Thread"
         )
         
@@ -5284,7 +5295,10 @@ class MarketProbabilityIndex:
             "Utylizacja": "Czy maszyna pracuje? (Wysokie = Rynek żyje tym tickerem)",
             "OBV Mom.": "Moc paliwa w baku. (Zielone = Kupują konkretni ludzie, nie boty)",
             "Smart Money": "Czy Grubasy kupują? (Powyżej 80% = Wieloryby ładują worki po cichu)",
-            "CTB (Shorts)": "Strach Szortujących. (Wysokie = Zaraz ich 'wyciśnie' i cena wystrzeli)"
+            "CTB (Shorts)": "Strach Szortujących. (Wysokie = Zaraz ich 'wyciśnie' i cena wystrzeli)",
+            "Short Interest": "Zaszortowane akcje (Skala x4). >75% = Ekstremalne ryzyko wycisku (Short Squeeze).",
+            "Insiderzy": "Aktywność Zarządu (Skala x5). Zielone = Prezesi pakują prywatny kapitał we własną firmę.",
+            "Zdrowie (Fund.)": "Kondycja płynnościowa (Current Ratio). Czerwone = Ryzyko problemów z obsługą długu."
         }
 
         if 'omega_garage' not in st.session_state:
@@ -5373,12 +5387,31 @@ class MarketProbabilityIndex:
         with col_analysis:
             if selected_tickers:
                 for ticker_to_check in selected_tickers:
+                    # --- 1. POBRANIE RAPORTU TECHNICZNEGO ---
                     cache_rep_key = f"omega_cache_rep_{ticker_to_check}"
                     if cache_rep_key not in st.session_state:
                         with st.spinner(f"Skanuję {ticker_to_check}..."):
                             st.session_state[cache_rep_key] = self.get_omega_report_data(ticker_to_check)
                     
                     report = st.session_state[cache_rep_key]
+                    
+                    # --- 2. POBRANIE FUNDAMENTÓW (Do wykresu i tabel na dole) ---
+                    cache_fund_key = f"omega_fund_{ticker_to_check}"
+                    if cache_fund_key not in st.session_state:
+                        with st.spinner("Pobieram rentgen fundamentalny i pliki SEC..."):
+                            import yfinance as yf
+                            try:
+                                tkr = yf.Ticker(ticker_to_check)
+                                st.session_state[cache_fund_key] = {
+                                    'info': tkr.info,
+                                    'upgrades': tkr.upgrades_downgrades
+                                }
+                            except Exception:
+                                st.session_state[cache_fund_key] = {'info': {}, 'upgrades': None}
+                    
+                    fund_data = st.session_state[cache_fund_key]
+                    info = fund_data.get('info', {})
+                    upgrades = fund_data.get('upgrades')
                     
                     if report:
                         st.markdown(f"## 📊 Raport: {ticker_to_check}")
@@ -5387,15 +5420,33 @@ class MarketProbabilityIndex:
                         import numpy as np
                         import pandas as pd
                         
-                        fig, ax = plt.subplots(figsize=(8, 3))
-                        labels = list(kielbasa_dict.keys())
-                        vals = [report['utilization'], report['obv_score'], report['smart_money'], 30] 
+                        # --- 3. MATEMATYKA NOWYCH WSKAŹNIKÓW (0-100%) ---
+                        short_pct = info.get('shortPercentOfFloat', 0) or 0
+                        insider_pct = info.get('heldPercentInsiders', 0) or 0
+                        current_ratio = info.get('currentRatio', 0) or 0
+                        
+                        # Normalizacja
+                        short_score = min(100, short_pct * 100 * 4)   # 25% szortów = 100/100 na wykresie
+                        insider_score = min(100, insider_pct * 100 * 5) # 20% insiderów = 100/100 na wykresie
+                        health_score = min(100, (current_ratio / 2.0) * 100) # Wskaźnik płynności 2.0 = 100/100 na wykresie
+                        
+                        fig, ax = plt.subplots(figsize=(10, 3.5)) # Wykres szerszy dla 7 słupków
+                        
+                        # Rozróżnienie Krypto (4 słupki) od Akcji (7 słupków)
+                        if ticker_to_check.endswith("-USD"):
+                            labels = ["Utylizacja", "OBV Mom.", "Smart Money", "CTB (Shorts)"]
+                            vals = [report['utilization'], report['obv_score'], report['smart_money'], 30] 
+                        else:
+                            labels = list(kielbasa_dict.keys())
+                            vals = [report['utilization'], report['obv_score'], report['smart_money'], 30, short_score, insider_score, health_score] 
                         
                         colors = ['#00ff00' if v > 75 else '#ff9900' if v > 45 else '#ff4b4b' for v in vals]
                         
                         bars = ax.bar(labels, vals, color=colors, alpha=0.9)
                         ax.set_ylim(0, 100)
-                        ax.tick_params(colors='white', labelsize=9)
+                        ax.tick_params(colors='white', labelsize=8)
+                        if not ticker_to_check.endswith("-USD"):
+                            plt.xticks(rotation=15) # Pochylenie napisów żeby na siebie nie weszły
                         
                         fig.patch.set_facecolor('#0e1117')
                         ax.set_facecolor('#0e1117')
@@ -5770,22 +5821,7 @@ class MarketProbabilityIndex:
                         
                         st.markdown("### 🏢 Fundamenty i Konsensus Wall Street")
                         
-                        cache_fund_key = f"omega_fund_{ticker_to_check}"
-                        if cache_fund_key not in st.session_state:
-                            with st.spinner("Pobieram raporty finansowe..."):
-                                try:
-                                    tkr = yf.Ticker(ticker_to_check)
-                                    st.session_state[cache_fund_key] = {
-                                        'info': tkr.info,
-                                        'upgrades': tkr.upgrades_downgrades
-                                    }
-                                except Exception:
-                                    st.session_state[cache_fund_key] = {'info': {}, 'upgrades': None}
-                                    
-                        fund_data = st.session_state[cache_fund_key]
-                        info = fund_data.get('info', {})
-                        upgrades = fund_data.get('upgrades')
-                        
+                        # (Dane fundamentalne zostały już pobrane na samej górze i są w zmiennej info)
                         market_cap = info.get('marketCap', 'N/A')
                         if isinstance(market_cap, (int, float)): 
                             if market_cap >= 1e12:
@@ -5908,13 +5944,13 @@ class MarketProbabilityIndex:
         Zawiera reklamy SonAi, Silent Angel oraz ostrzeżenia prawne.
         """
         return [
-            "🚀 <b>SONAI PREMIUM:</b> Odblokuj Zdrowie psychiczne z SonAi!  |  ",
+            "🚀 <b>SONAI PREMIUM:</b> Odblokuj zdrowie z SonAi! SonAi, Twoje domowe EEG  |  ",
             "💜 <b>SILENT ANGEL RETT:</b> Krypto, które realnie zmienia życie. Odkryj charytatywne NFT (silentangelrett.com)  |  ",
-            "🧬 <b>WEB3 CHARITY:</b> Twój kapitał to nadzieja. Zobacz, jak blockchain pomaga w rehabilitacji! silentangelrett.com  |  ",
+            "🧠 <b>Akademia Neurocoachingu. Stany umysłu i EEG. Wiedza o ludzkim umyśle!:</b> https://milaorlinska.com/akademia-neurocoachingu  |  ",
             "💎 <b>ZASADA #1:</b> Nie tracimy pieniędzy.  |  ",
             "🧠 <b>HEAL-TO-EARN:</b> SonAi - Zarabiaj krypto dbając o zdrowie (Już wkrótce!)  |  ",
             "<span style='color: #ff0055;'>⚠️ <b>RYZYKO:</b> Inwestujesz na własną odpowiedzialność. </span>  |  ",
-            "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji (zobacz Skaner Bólu).  |  "
+            "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji!  |  "
         ]
 
     def render_top_marquee_banner(self):
@@ -5957,7 +5993,7 @@ class MarketProbabilityIndex:
                 font-size: 15px; 
                 font-family: 'Segoe UI Emoji', Arial, sans-serif; 
                 line-height: 60px;
-                animation: scroll-top-banner 35s linear infinite;
+                animation: scroll-top-banner 50s linear infinite;
                 padding-left: 100%;
             }}
         </style>
@@ -7108,16 +7144,45 @@ class MarketProbabilityIndex:
         return alerts
 
     def analyze_news_sentiment(self, category):
-        url = self.rss_feeds.get(category)
-        if not url: return 0.5, []
-        try:
-            feed = feedparser.parse(url); headlines = []; total = 0; count = 0
-            for e in feed.entries[:5]:
-                p = TextBlob(e.title).sentiment.polarity
-                headlines.append((e.title, p, e.link)); total += p; count += 1
-            if count == 0: return 0.5, []
-            return np.clip(0.5 + (total/count * 0.5), 0, 1), headlines
-        except: return 0.5, []
+        """
+        Pobiera wiadomości ze strumieni RSS i analizuje ich sentyment za pomocą TextBlob.
+        Wersja zoptymalizowana: Obsługuje wiele źródeł jednocześnie (Cointelegraph, BeInCrypto itp.).
+        """
+        import feedparser
+        from textblob import TextBlob
+        
+        # Wbudowaliśmy listę źródeł bezpośrednio w metodę, aby uniezależnić ją od starego słownika w __init__
+        extended_feeds = {
+            'crypto': [
+                'https://cointelegraph.com/rss', 
+                'https://beincrypto.com/feed/'  # <--- Dodane BeInCrypto
+            ],
+            'economy': [
+                'https://finance.yahoo.com/news/rssindex'
+            ]
+        }
+        
+        urls = extended_feeds.get(category, [])
+        headlines = []
+        
+        for url in urls:
+            try:
+                feed = feedparser.parse(url)
+                # Z każdego źródła bierzemy po 5 najnowszych newsów, żeby zachować balans informacyjny
+                for e in feed.entries[:5]: 
+                    p = TextBlob(e.title).sentiment.polarity
+                    headlines.append((e.title, p, e.link))
+            except Exception as e:
+                print(f"[BŁĄD SYSTEMU] Nie udało się pobrać danych RSS z {url}: {e}")
+                
+        if not headlines:
+            return 0.0, []
+            
+        # Liczymy średni sentyment ze wszystkich zebranych wiadomości (z obu portali)
+        avg_sentiment = sum([h[1] for h in headlines]) / len(headlines)
+        
+        # Zwracamy ogólny sentyment i połączoną listę (ograniczamy wyświetlanie do 10 newsów)
+        return avg_sentiment, headlines[:10]
 
     def normalize(self, v, h): return (h < v).mean()
     def calc_rsi(self, s, p=14):
@@ -7173,12 +7238,16 @@ class MarketProbabilityIndex:
             wr.writerow([now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), round(eco,4), round(cry,4), round(btc,2), round(dxy,2), fng, round(news,4)])
 
     # --- FIX: LIKWIDACJE (OSTATECZNA NAPRAWA STRUKTURY DANYCH) ---
-    def get_liquidation_proxy(self, df):
+    @st.cache_data(ttl=3600)
+    def get_liquidation_proxy(_self, df):
         """
         Szacuje likwidacje. 
         Wersja z 'brutalnym' czyszczeniem MultiIndexu, który powodował błędy.
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            
             # Pobieramy dane OHLC
             btc_ohlc = yf.download('BTC-USD', period="1y", interval="1d", progress=False)
             
@@ -7189,8 +7258,6 @@ class MarketProbabilityIndex:
             if isinstance(btc_ohlc.columns, pd.MultiIndex):
                 # Odrzucamy poziom z nazwą tickera ('BTC-USD'), zostawiamy tylko 'Open', 'High' itp.
                 btc_ohlc.columns = btc_ohlc.columns.droplevel(1) 
-                # Jeśli powyższe nie zadziała w Twojej wersji, alternatywa:
-                # btc_ohlc.columns = [c[0] for c in btc_ohlc.columns]
 
             # Upewniamy się, że to są czyste dane numeryczne
             btc_ohlc = btc_ohlc.astype(float)
@@ -7216,7 +7283,7 @@ class MarketProbabilityIndex:
             return data
             
         except Exception as e:
-            print(f"Błąd likwidacji: {e}") # Wypisz w konsoli, ale nie wywalaj programu
+            print(f"Błąd likwidacji: {e}")
             return None
 
     def plot_liquidation_radar(self, liq_df):
@@ -7435,7 +7502,8 @@ class MarketProbabilityIndex:
         
         return fig
 
-    def get_crypto_bubbles_data(self):
+    @st.cache_data(ttl=3600)
+    def get_crypto_bubbles_data(_self):
         """
         CRYPTO BUBBLES (Wersja Binance TURBO):
         Zamiast pytać o każdy coin osobno (65 zapytań),
@@ -7443,6 +7511,7 @@ class MarketProbabilityIndex:
         Działa błyskawicznie dla listy 65+ coinów.
         """
         import requests
+        import pandas as pd
         
         # Twoja lista "Fat Pack" (nazwy bez -USD)
         raw_symbols = [
@@ -7569,7 +7638,8 @@ class MarketProbabilityIndex:
         fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
         return fig
 
-    def get_altcoin_squeeze_rank(self):
+    @st.cache_data(ttl=3600)
+    def get_altcoin_squeeze_rank(_self):
         """
         SNAJPER OKAZJI (Binance Multi-Threaded):
         Skanuje ponad 100 kryptowalut w poszukiwaniu 'Squeeze' (Ściśnięcia).
@@ -7577,6 +7647,7 @@ class MarketProbabilityIndex:
         """
         import requests
         import concurrent.futures
+        import pandas as pd
         
         # Lista symboli (Czyste tickery bez -USD)
         # Zaktualizowana o nowe nazwy Binance (RENDER, POL, FET)
@@ -7760,12 +7831,16 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: ETH DETEKTOR WYBUCHU (Obliczenia) ---
-    def get_eth_volatility_squeeze_data(self):
+    @st.cache_data(ttl=3600)
+    def get_eth_volatility_squeeze_data(_self):
         """
         Oblicza Squeeze specyficznie dla Ethereum (ETH-USD).
         Nie możemy używać danych BTC, bo ETH ma swój własny cykl zmienności.
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            
             # Pobieramy dane dla ETH
             df = yf.download('ETH-USD', period="1y", progress=False)
             
@@ -7862,12 +7937,16 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: SEZONOWOŚĆ (Metoda GET) ---
-    def get_seasonality_data(self, symbol='BTC-USD'):
+    @st.cache_data(ttl=3600)
+    def get_seasonality_data(_self, symbol='BTC-USD'):
         """
         Pobiera historię i przetwarza ją na macierz: Rok x Miesiąc.
         Oblicza miesięczne zwroty procentowe.
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            
             # 1. Pobieramy całą historię
             df = yf.download(symbol, period="max", progress=False)
             
@@ -7947,7 +8026,8 @@ class MarketProbabilityIndex:
         fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
         return fig
 
-    def get_ath_drawdown_data(self):
+    @st.cache_data(ttl=3600)
+    def get_ath_drawdown_data(_self):
         """
         DRAWDOWN SCANNER (Binance Multi-Threaded):
         Oblicza spadek od ATH (All-Time High).
@@ -7956,6 +8036,7 @@ class MarketProbabilityIndex:
         """
         import requests
         import concurrent.futures
+        import pandas as pd
         
         # Lista coinów (Czyste tickery)
         symbols = [
@@ -8087,23 +8168,26 @@ class MarketProbabilityIndex:
 
     import requests # Upewnij się, że masz to zaimportowane na górze pliku
 
-    def get_rsi_heatmap_data(self):
+    @st.cache_data(ttl=3600)
+    def get_rsi_heatmap_data(_self):
         """
         Pobiera dane BEZPOŚREDNIO z Binance API.
         Zalety: Brak błędów 'Flash Crash' (Yahoo), prawdziwe ceny rynkowe.
         Wada: Działa tylko dla coinów dostępnych na Binance (Twoja lista jest OK).
         """
+        import requests
+        import pandas as pd
+        
         # Lista coinów (Twoja lista, ale nazwy muszą pasować do Binance)
         # Binance używa formatu: BTCUSDT, ETHUSDT.
         # Tutaj wpisz same symbole, kod doda 'USDT' automatycznie.
         symbols = [
             'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 'AVAX', 'ENA',
-            'DOT', 'LINK', 'MATIC', 'LTC', 'UNI', 'ATOM', 'ETC', 'XLM', 'ASTR', # ASTER -> ASTR (Poprawne ticker)
+            'DOT', 'LINK', 'MATIC', 'LTC', 'UNI', 'ATOM', 'ETC', 'XLM', 'ASTR', 
             'FIL', 'HBAR', 'LDO', 'ARB', 'OP', 'APT', 'RNDR', 'NEAR',
             'INJ', 'STX', 'IMX', 'GRT', 'SNX', 'AAVE', 'ALGO', 'QNT',
             'EOS', 'SAND', 'MANA', 'THETA', 'FTM', 'AXS', 'NEO', 'FLOW',
             'SUI', 'SEI', 'TIA', 'LUNC', 'VRA', 'ONDO', 'NAKA', 'SHRAP'
-            # Usunąłem NAKA i SHRAP, bo mogą nie być na głównym Binance (sprawdzi to try/except)
         ]
         
         rsi_data = []
@@ -8233,7 +8317,8 @@ class MarketProbabilityIndex:
         fig.patch.set_facecolor(t['bg']); ax.set_facecolor(t['bg'])
         return fig
 
-    def get_market_breadth_data(self):
+    @st.cache_data(ttl=3600)
+    def get_market_breadth_data(_self):
         """
         MARKET BREADTH (Binance Multi-Threaded):
         Oblicza, jaki procent rynku jest w trendzie wzrostowym (Cena > SMA 50).
@@ -8242,6 +8327,7 @@ class MarketProbabilityIndex:
         import requests
         import concurrent.futures
         from datetime import datetime
+        import pandas as pd
         
         # Top 30 Coinów (Czyste tickery)
         symbols = [
@@ -8385,7 +8471,8 @@ class MarketProbabilityIndex:
         
         return fig
 
-    def get_rrg_data(self):
+    @st.cache_data(ttl=3600)
+    def get_rrg_data(_self):
         """
         RRG (Relative Rotation Graph) - Binance Edition.
         Porównuje siłę Altcoinów względem BTC (Benchmark).
@@ -8394,6 +8481,7 @@ class MarketProbabilityIndex:
         """
         import requests
         import concurrent.futures
+        import pandas as pd
         
         # Koszyk reprezentatywny (Czyste tickery)
         # Usunąłem -USD, dodałem obsługę RENDER/POL w kodzie
@@ -8563,7 +8651,8 @@ class MarketProbabilityIndex:
         
         return fig
 
-    def get_hurst_ranking(self):
+    @st.cache_data(ttl=3600)
+    def get_hurst_ranking(_self):
         """
         HURST EXPONENT (Binance Multi-Threaded):
         Oblicza Wykładnik Hursta (H) używając danych z Binance.
@@ -8576,6 +8665,7 @@ class MarketProbabilityIndex:
         import requests
         import concurrent.futures
         import numpy as np
+        import pandas as pd
         
         # Lista coinów (Czyste tickery)
         symbols = [
@@ -8716,12 +8806,17 @@ class MarketProbabilityIndex:
         return fig
 
     # --- 1. MONTE CARLO SIMULATION (Przyszłość) ---
-    def get_monte_carlo_simulation(self):
+    @st.cache_data(ttl=3600)
+    def get_monte_carlo_simulation(_self):
         """
         Symuluje 50 możliwych ścieżek ceny BTC na najbliższe 30 dni
         używając geometrycznych ruchów Browna (GBM).
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            import numpy as np
+            
             # Pobieramy dane
             df = yf.download('BTC-USD', period="1y", progress=False)
             close = df['Close']['BTC-USD'] if isinstance(df.columns, pd.MultiIndex) else df['Close']
@@ -8927,12 +9022,15 @@ class MarketProbabilityIndex:
         return fig
 
     # --- 3. SPREAD Z-SCORE (Arbitraż BTC vs ETH) ---
-    def get_btc_eth_spread(self):
+    @st.cache_data(ttl=3600)
+    def get_btc_eth_spread(_self):
         """
         Oblicza Z-Score spreadu między BTC a ETH.
         Wykrywa anomalie cenowe.
         """
         try:
+            import yfinance as yf
+            
             df = yf.download(['BTC-USD', 'ETH-USD'], period="1y", progress=False)['Close']
             
             # Obliczamy stosunek cen (Ile ETH kupisz za 1 BTC)
@@ -9189,13 +9287,18 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: VALUE AT RISK (VaR) - Zarządzanie Ryzykiem ---
-    def get_var_data(self):
+    @st.cache_data(ttl=3600)
+    def get_var_data(_self):
         """
         Oblicza Value at Risk (VaR) i Expected Shortfall (ES).
         Metoda Historyczna (Historical Simulation).
         Mówi: Gdzie jest granica bólu, której statystycznie nie przekroczymy?
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            import numpy as np
+            
             # Pobieramy dane BTC
             df = yf.download('BTC-USD', period="2y", progress=False)
             close = df['Close']['BTC-USD'] if isinstance(df.columns, pd.MultiIndex) else df['Close']
@@ -9271,12 +9374,16 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: ALGORYTMICZNY SĘDZIA (Technical Consensus) ---
-    def get_technical_verdict(self):
+    @st.cache_data(ttl=3600)
+    def get_technical_verdict(_self):
         """
         Zbiera 10 wskaźników dla BTC i przeprowadza głosowanie.
         Zwraca tabelę wyników i ostateczny werdykt (MOCNE KUPUJ / SPRZEDAJ).
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            
             # Pobieramy dane (200 dni potrzebne do SMA200)
             df = yf.download('BTC-USD', period="1y", progress=False)
             close = df['Close']['BTC-USD'] if isinstance(df.columns, pd.MultiIndex) else df['Close']
@@ -9397,13 +9504,17 @@ class MarketProbabilityIndex:
         return fig
 
     # --- 1. KRYTERIUM KELLY'EGO (Bet Sizing) ---
-    def get_kelly_criterion(self):
+    @st.cache_data(ttl=3600)
+    def get_kelly_criterion(_self):
         """
         Analizuje historyczne zwroty BTC, aby obliczyć optymalną wielkość pozycji (Kelly Bet).
         Wzór: f* = (p*b - q) / b
         Gdzie: p = prawodpodobieństwo wygranej, b = stosunek zysku do ryzyka (odds).
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            
             # Pobieramy dane
             df = yf.download('BTC-USD', period="2y", progress=False)
             close = df['Close']['BTC-USD'] if isinstance(df.columns, pd.MultiIndex) else df['Close']
@@ -9482,12 +9593,16 @@ class MarketProbabilityIndex:
         return fig
 
     # --- 2. SMART MONEY TRACKER (Accumulation/Distribution) ---
-    def get_smart_money_data(self):
+    @st.cache_data(ttl=3600)
+    def get_smart_money_data(_self):
         """
         Oblicza wskaźnik Accumulation/Distribution (A/D) i sprawdza dywergencje z ceną.
         Wykrywa, czy ruch ceny jest poparty wolumenem.
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            
             df = yf.download('BTC-USD', period="6mo", progress=False)
             
             # Obsługa MultiIndex
@@ -9500,8 +9615,6 @@ class MarketProbabilityIndex:
                 close = df['Close']; high = df['High']; low = df['Low']; vol = df['Volume']
             
             # Wskaźnik A/D (Accumulation/Distribution Line)
-            # MFV = ((Close - Low) - (High - Close)) / (High - Low)
-            # AD = MFV * Volume + Prev AD
             mfv = ((close - low) - (high - close)) / (high - low)
             # Zabezpieczenie przed dzieleniem przez zero
             mfv = mfv.fillna(0)
@@ -9554,13 +9667,18 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: ECHOLOKACJA RYNKU (Fourier Transform) ---
-    def get_fourier_projection(self):
+    @st.cache_data(ttl=3600)
+    def get_fourier_projection(_self):
         """
         Rozkłada cenę Bitcoina na fale sinusoidalne (FFT).
         Identyfikuje dominujące cykle i projektuje je w przyszłość.
         To pozwala przewidzieć punkty zwrotne (Górki/Dołki) wynikające z cykliczności.
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            import numpy as np
+            
             # Pobieramy dane (dłuższy okres dla lepszej detekcji fal)
             df = yf.download('BTC-USD', period="2y", progress=False)
             close = df['Close']['BTC-USD'] if isinstance(df.columns, pd.MultiIndex) else df['Close']
@@ -9596,9 +9714,6 @@ class MarketProbabilityIndex:
             future_trend = poly[0] * future_x + poly[1]
             
             # Matematyczna ekstrapolacja sumy sinusuid
-            # To jest trudne w czystym numpy, więc robimy trick:
-            # Generujemy falę na nowym, dłuższym zakresie czasu bazując na częstotliwościach
-            
             restored_wave = np.zeros(N + future_days)
             t = np.arange(N + future_days)
             
@@ -9676,7 +9791,8 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: GENOM RYNKU (3D Phase Space / Strange Attractor) ---
-    def get_phase_space_data(self):
+    @st.cache_data(ttl=3600)
+    def get_phase_space_data(_self):
         """
         Tworzy trójwymiarową mapę chaosu (Przestrzeń Fazowa).
         Używa opóźnień czasowych (Time Delay Embedding), aby zrekonstruować 'atraktor' rynku.
@@ -9685,6 +9801,9 @@ class MarketProbabilityIndex:
         Z = Cena(t - 2*lag)
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            
             # Pobieramy dane (1 rok to minimum dla ładnego atraktora)
             df = yf.download('BTC-USD', period="1y", progress=False)
             close = df['Close']['BTC-USD'] if isinstance(df.columns, pd.MultiIndex) else df['Close']
@@ -9767,13 +9886,18 @@ class MarketProbabilityIndex:
         return fig
 
     # --- UPDATE: FRACTAL PATTERN MATCHER (Wersja 'Znajdź cokolwiek') ---
-    def get_fractal_matches(self):
+    @st.cache_data(ttl=3600)
+    def get_fractal_matches(_self):
         """
         Znajduje w historii BTC momenty (bliźniaki).
         WERSJA POPRAWIONA: Zmniejszono rygor, żeby zawsze znajdował wzorce,
         nawet gdy rynek jest 'unikalny'.
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            import numpy as np
+            
             # Pobieramy MAX historii
             df = yf.download('BTC-USD', period="max", progress=False)
             close = df['Close']['BTC-USD'] if isinstance(df.columns, pd.MultiIndex) else df['Close']
@@ -9806,7 +9930,6 @@ class MarketProbabilityIndex:
                 norm_hist = normalize(hist_window)
                 
                 # Obliczamy korelację
-                # Jeśli wycinek jest płaski (std=0), korelacja zwróci NaN -> zamieniamy na 0
                 try:
                     corr = np.corrcoef(norm_current, norm_hist)[0, 1]
                 except:
@@ -9815,7 +9938,6 @@ class MarketProbabilityIndex:
                 if np.isnan(corr): corr = 0
                 
                 # --- ZMIANA 2: Niższy próg (0.60 zamiast 0.80) ---
-                # Szukamy "Kuzynów", skoro nie ma "Bliźniaków"
                 if corr > 0.80:
                     future_window = close.iloc[i + window_size : i + window_size + projection_days].values
                     
@@ -9829,7 +9951,7 @@ class MarketProbabilityIndex:
                         'future': scaled_future
                     })
             
-            # Sortujemy i bierzemy TOP 5 (nawet jeśli są słabe, bierzemy najlepsze z najgorszych)
+            # Sortujemy i bierzemy TOP 5 
             matches = sorted(matches, key=lambda x: x['corr'], reverse=True)[:5]
             
             # Jeśli nadal pusto (bardzo dziwny rynek), to zwracamy nic
@@ -9906,12 +10028,16 @@ class MarketProbabilityIndex:
         return fig
 
     # --- FINAL BOSS: LIQUIDATION HEATMAP (Symulacja Stref Śmierci) ---
-    def get_liquidation_levels(self):
+    @st.cache_data(ttl=3600)
+    def get_liquidation_levels(_self):
         """
         Symuluje poziomy likwidacji traderów grających na dźwigni (x10, x25, x50, x100).
         Banki celują w te poziomy, aby pozyskać płynność (Stop Hunt).
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            
             df = yf.download('BTC-USD', period="3mo", progress=False)
             if isinstance(df.columns, pd.MultiIndex):
                 high = df['High']['BTC-USD']
@@ -9998,13 +10124,19 @@ class MarketProbabilityIndex:
         return fig
 
     # --- RESET: FED NET LIQUIDITY (Wersja Podstawowa / Czysta) ---
-    def get_true_fed_liquidity(self):
+    @st.cache_data(ttl=3600)
+    def get_true_fed_liquidity(_self):
         """
         Oblicza Fed Net Liquidity w najprostszy, niezawodny sposób.
         Bez skomplikowanych filtrów, które psuły wykres.
         Wzór: Assets - TGA - RRP.
         """
         try:
+            import pandas_datareader.data as web
+            import yfinance as yf
+            import pandas as pd
+            from datetime import datetime
+            
             start_date = '2018-01-01'
             end_date = datetime.now()
             
@@ -10116,12 +10248,18 @@ class MarketProbabilityIndex:
         return fig
 
     # --- FIX: M2 MONEY SUPPLY (Naprawa błędu Alignment) ---
-    def get_m2_supply_data(self):
+    @st.cache_data(ttl=3600)
+    def get_m2_supply_data(_self):
         """
         Pobiera podaż pieniądza M2 z FRED.
         POPRAWKA: Zwraca czyste Series, aby uniknąć błędu 'Operands are not aligned'.
         """
         try:
+            import pandas_datareader.data as web
+            import yfinance as yf
+            import pandas as pd
+            from datetime import datetime
+            
             start_date = '2019-01-01'
             end_date = datetime.now()
             
@@ -10208,7 +10346,8 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: FRED MACRO PACK (Recesja, Grawitacja, Strach) ---
-    def get_fred_macro_pack(self):
+    @st.cache_data(ttl=3600)
+    def get_fred_macro_pack(_self):
         """
         Pobiera 3 kluczowe wskaźniki makro z FRED:
         1. T10Y2Y (Krzywa dochodowości) - Wykrywacz recesji.
@@ -10216,6 +10355,9 @@ class MarketProbabilityIndex:
         3. BAMLC0A0CM (Credit Spread) - Strach na rynku długu.
         """
         try:
+            import pandas_datareader.data as web
+            from datetime import datetime
+            
             start_date = '2019-01-01'
             end_date = datetime.now()
             
@@ -10288,7 +10430,8 @@ class MarketProbabilityIndex:
         return fig
 
     # --- FINAL BOSS: GLOBAL CENTRAL BANK LIQUIDITY (FED + ECB + BOJ) ---
-    def get_global_liquidity_index(self):
+    @st.cache_data(ttl=3600)
+    def get_global_liquidity_index(_self):
         """
         Oblicza GLOBALNĄ PŁYNNOŚĆ (Global Liquidity Index).
         Sumuje bilanse:
@@ -10299,6 +10442,11 @@ class MarketProbabilityIndex:
         Zwraca: BTC oraz Sumaryczny Indeks Płynności w Bilionach USD.
         """
         try:
+            import pandas_datareader.data as web
+            import yfinance as yf
+            import pandas as pd
+            from datetime import datetime
+            
             start_date = '2019-01-01'
             end_date = datetime.now()
             
@@ -10307,14 +10455,6 @@ class MarketProbabilityIndex:
             if isinstance(btc, pd.DataFrame): btc = btc.iloc[:, 0]
             
             # 2. Pobieramy dane Makro z FRED
-            # WALCL = Fed Assets (Miliony USD)
-            # WTREGEN = TGA (Miliardy USD) -> trzeba * 1000
-            # RRPONTSYD = RRP (Miliardy USD) -> trzeba * 1000
-            # ECBASSETSW = ECB Assets (Miliony EUR)
-            # JPNASSETS = BOJ Assets (100 Milionów JPY)
-            # DEXUSEU = Kurs USD/EUR (Do przeliczenia ECB)
-            # DEXJPUS = Kurs JPY/USD (Do przeliczenia BOJ)
-            
             tickers = [
                 'WALCL', 'WTREGEN', 'RRPONTSYD',  # USA
                 'ECBASSETSW', 'DEXUSEU',          # EUROPA
@@ -10327,24 +10467,16 @@ class MarketProbabilityIndex:
             # 3. Obliczenia (Konwersja wszystkiego na MILIONY USD)
             
             # --- A. USA (FED NET LIQUIDITY) ---
-            # Assets - TGA - RRP
             fed_net = macro_data['WALCL'] - (macro_data['WTREGEN'] * 1000) - (macro_data['RRPONTSYD'] * 1000)
             
             # --- B. EUROPA (ECB w USD) ---
-            # Assets (EUR) * Kurs (USD/EUR)
             ecb_usd = macro_data['ECBASSETSW'] * macro_data['DEXUSEU']
             
             # --- C. JAPONIA (BOJ w USD) ---
-            # JPNASSETS jest w jednostkach "100 Milionów Jenów".
-            # Żeby mieć Miliony Jenów -> * 100.
-            # Żeby mieć USD -> Dzielimy przez kurs JPY/USD
             boj_usd = (macro_data['JPNASSETS'] * 100) / macro_data['DEXJPUS']
-            
-            # BOJ jest miesięczny, reszta tygodniowa/dzienna. Musimy wyrównać BOJ.
             boj_usd = boj_usd.resample('D').interpolate(method='linear')
             
-            # 4. SUMA GLOBALNA (Wszystko sprowadzone do wspólnego indeksu)
-            # Musimy wyrównać indeksy, bo różne banki publikują w różne dni
+            # 4. SUMA GLOBALNA
             df_liq = pd.DataFrame({
                 'FED': fed_net,
                 'ECB': ecb_usd,
@@ -10354,7 +10486,7 @@ class MarketProbabilityIndex:
             # Suma w Bilionach (Trillions) dla czytelności (dzielimy przez 1,000,000)
             df_liq['GLOBAL_INDEX'] = (df_liq['FED'] + df_liq['ECB'] + df_liq['BOJ']) / 1000000
             
-            # Wyrównanie z BTC (Tygodniówki są najlepsze do szumów)
+            # Wyrównanie z BTC
             btc_wk = btc.resample('W').last().ffill()
             liq_wk = df_liq['GLOBAL_INDEX'].resample('W').last().ffill()
             
@@ -10739,7 +10871,8 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: MACRO CONTEXT (BTC vs NASDAQ vs DXY) ---
-    def get_macro_context_data(self):
+    @st.cache_data(ttl=3600)
+    def get_macro_context_data(_self):
         """
         Pobiera kontekst makroekonomiczny wg Raoula Pala.
         Zestawia BTC z:
@@ -10747,6 +10880,10 @@ class MarketProbabilityIndex:
         2. DXY (DX-Y.NYB) - "Dollar Wrecking Ball". Siła dolara.
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            from datetime import datetime
+            
             start_date = '2019-01-01'
             end_date = datetime.now()
             
@@ -10761,11 +10898,6 @@ class MarketProbabilityIndex:
             # Uzupełnianie braków (Weekendy - krypto działa, giełda nie)
             # Forward fill sprawia, że w weekend cena akcji/dolara jest z piątku
             data = data.ffill()
-            
-            # Normalizacja do Procentów (Start = 0%)
-            # Żeby zobaczyć "Wyścig Aktywów", musimy sprowadzić je do wspólnego mianownika.
-            # Ale tutaj zrobimy inaczej - zwrócimy ceny, a normalizację zrobimy na wykresie
-            # lub policzymy korelację.
             
             return data
 
@@ -10845,14 +10977,18 @@ class MarketProbabilityIndex:
         return fig
 
     # --- UPDATE: TGA MONITOR (Historyczny od 2019) ---
-    def get_tga_monitor_data(self):
+    @st.cache_data(ttl=3600)
+    def get_tga_monitor_data(_self):
         """
         Pobiera dane konta TGA (Treasury General Account).
         Ticker: WTREGEN (Weekly)
         ZMIANA: Zakres od 2019 roku, aby widzieć cykliczność podatkową.
         """
         try:
-            start_date = '2019-01-01' # Zmiana na 2019
+            import pandas_datareader.data as web
+            from datetime import datetime
+            
+            start_date = '2019-01-01' 
             end_date = datetime.now()
             
             # Pobieramy TGA
@@ -12388,7 +12524,8 @@ class MarketProbabilityIndex:
         return fig
 
     # --- PRO TOOLS: SECTOR ROTATION (S&P 500 - Z Generałami) ---
-    def get_sector_performance_data(self):
+    @st.cache_data(ttl=3600)
+    def get_sector_performance_data(_self):
         """
         Pobiera wyniki sektorów S&P 500.
         Wersja z podglądem 'Generałów' (Top Holdings) w nazwie.
@@ -12511,7 +12648,8 @@ class MarketProbabilityIndex:
         return fig
 
     # --- PRO TOOLS: SECTOR SNIPER (Mega Pack - Updated Keys) ---
-    def get_sector_sniper_data(self):
+    @st.cache_data(ttl=3600)
+    def get_sector_sniper_data(_self):
         """
         Wersja 'Fat Pack' z zaktualizowanymi kluczami nazw sektorów.
         """
@@ -12573,7 +12711,7 @@ class MarketProbabilityIndex:
 
         try:
             # 1. Pobieramy lidera sektorów
-            df_sectors = self.get_sector_performance_data()
+            df_sectors = _self.get_sector_performance_data()
             if df_sectors is None or df_sectors.empty: return None, None
             
             # Najlepszy sektor
@@ -12644,6 +12782,98 @@ class MarketProbabilityIndex:
         except Exception as e:
             print(f"Błąd Snajpera: {e}")
             return None, None
+
+    def _get_fallback_holdings(self, sector):
+        """
+        Wewnętrzna metoda pomocnicza dla Sector Snipera.
+        Nie potrzebuje cache, bo tylko zwraca tekst.
+        """
+        fallbacks = {
+            'XLK': ['AAPL', 'MSFT', 'NVDA', 'AVGO', 'ADBE', 'CSCO', 'CRM', 'AMD', 'INTC', 'QCOM'],
+            'XLF': ['BRK-B', 'JPM', 'V', 'MA', 'BAC', 'WFC', 'SPGI', 'GS', 'MS', 'AXP'],
+            'XLE': ['XOM', 'CVX', 'EOG', 'COP', 'SLB', 'MPC', 'PXD', 'VLO', 'PSX', 'OXY'],
+            'XLV': ['UNH', 'JNJ', 'LLY', 'MRK', 'ABBV', 'PFE', 'TMO', 'DHR', 'ABT', 'BMY'],
+            'XLY': ['AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX', 'LOW', 'BKNG', 'TJX', 'TGT']
+        }
+        return fallbacks.get(sector, ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'])
+
+    @st.cache_data(ttl=3600)
+    def get_graham_valuation_data(_self):
+        """
+        Duch Benjamina Grahama (Value Investing Scanner).
+        Skanuje wybrane potężne spółki z Wall Street i ocenia je według
+        klasycznego wzoru Grahama: V = EPS * (8.5 + 2g).
+        Wykrywa niedowartościowane (UnderValued) perły rynkowe.
+        """
+        try:
+            import yfinance as yf
+            import pandas as pd
+            
+            # Lista znanych firm typu Value / Dividend + kilka Tech
+            symbols = [
+                'AAPL', 'MSFT', 'GOOGL', 'BRK-B', 'JNJ', 'KO', 'PEP', 
+                'PG', 'JPM', 'V', 'WMT', 'XOM', 'CVX', 'PFE', 'INTC',
+                'CSCO', 'VZ', 'T', 'MCD', 'NKE', 'DIS', 'MMM'
+            ]
+            
+            results = []
+            print(f"Duch Grahama analizuje {len(symbols)} spółek...")
+            
+            for sym in symbols:
+                try:
+                    ticker = yf.Ticker(sym)
+                    info = ticker.info
+                    
+                    # Wymagane parametry do wzoru Grahama
+                    current_price = info.get('currentPrice', info.get('regularMarketPrice'))
+                    eps = info.get('trailingEps', 0)
+                    pe_ratio = info.get('trailingPE', 0)
+                    
+                    # Estymowany wzrost (Growth) na najbliższe 5 lat
+                    # Czasem API Yahoo ukrywa ten parametr, więc używamy PEG lub bezpiecznego założenia
+                    peg_ratio = info.get('pegRatio', 0)
+                    if peg_ratio and peg_ratio > 0 and pe_ratio > 0:
+                        g = pe_ratio / peg_ratio
+                    else:
+                        g = 5.0 # Bezpieczne domyślne 5% dla blue-chipów
+                        
+                    # Bezpieczniki dla spółek deficytowych
+                    if not current_price or eps <= 0:
+                        continue
+                        
+                    # --- ZMODYFIKOWANY WZÓR GRAHAMA ---
+                    # V = EPS * (8.5 + 2g) * 4.4 / Y
+                    # Gdzie Y to obecna rentowność obligacji korporacyjnych (zakładamy ok. 4.5%)
+                    # Używamy prostszej wersji bazowej dla solidności:
+                    intrinsic_value = eps * (8.5 + (2 * g))
+                    
+                    # Margines Bezpieczeństwa (Margin of Safety)
+                    margin = ((intrinsic_value - current_price) / intrinsic_value) * 100
+                    
+                    status = "PRZECENIONA 🔴" if margin < 0 else "OKAZJA (Value) 🟢"
+                    
+                    results.append({
+                        'Spółka': sym,
+                        'Cena Obecna': round(current_price, 2),
+                        'Wartość Grahama': round(intrinsic_value, 2),
+                        'Margin of Safety (%)': round(margin, 2),
+                        'EPS': eps,
+                        'Założony Wzrost (%)': round(g, 2),
+                        'Werdykt': status
+                    })
+                    
+                except Exception:
+                    continue
+                    
+            df_val = pd.DataFrame(results)
+            if not df_val.empty:
+                df_val = df_val.sort_values(by='Margin of Safety (%)', ascending=False)
+                
+            return df_val
+
+        except Exception as e:
+            print(f"Błąd Graham Scanner: {e}")
+            return None
 
     def plot_sector_sniper(self, df, sector_name):
         if df is None or df.empty: return None
@@ -14165,12 +14395,16 @@ class MarketProbabilityIndex:
         return fig
 
     # --- PRO TOOLS: DOW JONES ARCHITECT (PURE TECH) ---
-    def get_dow_architect_data(self):
+    @st.cache_data(ttl=3600)
+    def get_dow_architect_data(_self):
         """
         Skanuje 30 spółek Dow Jones (Aktualny Skład).
         Wersja CZYSTA TECHNICZNA (Bez Grahama).
         Szuka: Wyprzedania (RSI), Niskiej Ceny (vs SMA200) i Paniki (Drawdown).
         """
+        import yfinance as yf
+        import pandas as pd
+        
         # Aktualny skład Dow Jones (Bez Intela, z Nvidią)
         dow_30 = [
             'AXP', 'AMGN', 'AAPL', 'BA', 'CAT', 'CSCO', 'CVX', 'GS', 'HD', 'HON',
@@ -14736,6 +14970,7 @@ class MarketProbabilityIndex:
         # Używamy bezpiecznej listy tekstów (chroni przed błędami składniowymi)
         ad_texts = [
             "🚀 <b>SONAI PREMIUM:</b> Odblokuj Zdrowie psychiczne z SonAi!  |  ",
+            "🧠 <b>Akademia Neurocoachingu. Stany umysłu i EEG. Wiedza o ludzkim umyśle!:</b> https://milaorlinska.com/akademia-neurocoachingu  |  ",
             "👼 <b>SILENT ANGEL NFT:</b> Dołącz do rewolucji dobra! Wesprzyj rodziny walczące z rzadką chorobą i zdobądź unikalne NFT (silentangelrett.com).  |  ",
             "<span style='color: #ff0055;'>⚠️ <b>NOT FINANCIAL ADVICE:</b> Wszystkie dane mają charakter wyłącznie edukacyjny. </span>  |  ",
             "💎 <b>ZASADA #1:</b> Nie tracimy pieniędzy.  |  ",
@@ -14743,7 +14978,7 @@ class MarketProbabilityIndex:
             "<span style='color: #ff0055;'>⚠️ <b>RYZYKO:</b> Inwestujesz na własną odpowiedzialność. </span>  |  ",
             "📊 <b>NOWOŚĆ:</b> Sprawdź zakładkę 'Sezonowość' i zobacz idealny rok BTC.  |  ",
             "📞 <b>REKLAMA TUTAJ:</b> Twoja firma widoczna dla inwestorów  |  ",
-            "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji (zobacz Skaner Bólu). "
+            "🔥 <b>PRO TIP:</b> Kiedy wszyscy się boją, Ty szukaj okazji! "
         ]
         
         # Łączymy w jeden ciąg
@@ -14778,7 +15013,7 @@ class MarketProbabilityIndex:
             .ticker-text-animated {{
                 display: inline-block;
                 line-height: 60px;
-                animation: scroll-bottom-ticker 40s linear infinite;
+                animation: scroll-bottom-ticker 60s linear infinite;
             }}
 
             /* Ukrywamy standardową stopkę Streamlit */
@@ -14831,6 +15066,7 @@ class MarketProbabilityIndex:
         import threading
         import os
         import json
+        import streamlit as st
 
         # 1. Konfiguracja
         GA_ID = "G-D4BM5ZM6NB"
@@ -14838,22 +15074,25 @@ class MarketProbabilityIndex:
         id_filename = "user_id.json"
         
         # --- LOGIKA IDENTYFIKACJI (CID) ---
-        # Sprawdzamy czy mamy stałego użytkownika zapisanego w pliku
-        try:
-            if os.path.exists(id_filename):
-                with open(id_filename, 'r') as f:
-                    data = json.load(f)
-                    cid = data.get('client_id')
-            else:
-                cid = str(uuid.uuid4())
-                with open(id_filename, 'w') as f:
-                    json.dump({'client_id': cid}, f)
-        except:
-            cid = str(uuid.uuid4())
         
-        # Zapisz w sesji Streamlit
+        # >>> STARY KOD (Zablokowany hashtagami - nadpisywał u wszystkich to samo ID z pliku) <<<
+        # try:
+        #     if os.path.exists(id_filename):
+        #         with open(id_filename, 'r') as f:
+        #             data = json.load(f)
+        #             cid = data.get('client_id')
+        #     else:
+        #         cid = str(uuid.uuid4())
+        #         with open(id_filename, 'w') as f:
+        #             json.dump({'client_id': cid}, f)
+        # except:
+        #     cid = str(uuid.uuid4())
+        
+        # >>> NOWY KOD (Czysta sesja Streamlit - każdy użytkownik dostaje własne, unikalne ID) <<<
         if 'client_id' not in st.session_state:
-            st.session_state['client_id'] = cid
+            st.session_state['client_id'] = str(uuid.uuid4())
+        cid = st.session_state['client_id']
+        # =========================================================
 
         # --- LOGIKA SESJI I CZASU ---
         if 'ga_session_id' not in st.session_state:
@@ -15097,7 +15336,8 @@ class MarketProbabilityIndex:
             """, unsafe_allow_html=True)
 
     # --- NOWOŚĆ: INSIDER TRADING TRACKER (Congress Copy-Trade) ---
-    def get_congress_tracker_data(self):
+    @st.cache_data(ttl=3600)
+    def get_congress_tracker_data(_self):
         """
         Analizuje wyniki inwestycyjne Kongresu USA w porównaniu do zwykłych ludzi (S&P 500).
         Używa ETF-ów:
@@ -15106,6 +15346,10 @@ class MarketProbabilityIndex:
         - SPY (Benchmark - Rynek)
         """
         try:
+            from datetime import datetime, timedelta
+            import yfinance as yf
+            import pandas as pd
+            
             start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
             tickers = ['NANC', 'KRUZ', 'SPY']
             
@@ -15209,7 +15453,8 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: HEDGING CALCULATOR (Defense Mode) ---
-    def get_hedging_data(self):
+    @st.cache_data(ttl=3600)
+    def get_hedging_data(_self):
         """
         Oblicza poziom defensywy (Hedging Score) na podstawie:
         1. VIX (Indeks Strachu)
@@ -15378,41 +15623,44 @@ class MarketProbabilityIndex:
         return fig
 
     # --- NOWOŚĆ: COMMODITY SUPERCYCLE (Papier vs Rzeczy) ---
-    def get_commodity_supercycle_data(self):
+    @st.cache_data(ttl=3600)
+    def get_commodity_supercycle_data(_self):
         """
         Analizuje relację Surowców do Akcji (S&P 500).
         Tworzy własny indeks surowcowy (Hard Assets Index) składający się z:
         1. Energii (Ropa CL=F) - Krew gospodarki.
         2. Przemysłu (Miedź HG=F) - Dr. Copper (wskaźnik koniunktury).
         3. Pieniądza (Złoto GC=F) - Ochrona wartości.
-        
         Porównuje to do S&P 500 (^GSPC).
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            from datetime import datetime, timedelta
+            
             # 10 lat to minimum, żeby zobaczyć cykl surowcowy
             start_date = (datetime.now() - timedelta(days=365*10)).strftime('%Y-%m-%d')
-            
             tickers = ['CL=F', 'HG=F', 'GC=F', '^GSPC']
             
             data = yf.download(tickers, start=start_date, progress=False)
             
             # Fix MultiIndex
             if isinstance(data.columns, pd.MultiIndex):
-                try: df = data.xs('Close', axis=1, level=0, drop_level=True)
-                except: 
-                    try: df = data.xs('Close', axis=1, level=1, drop_level=True)
-                    except: return None
+                try:
+                    df = data.xs('Close', axis=1, level=0, drop_level=True)
+                except:
+                    try:
+                        df = data.xs('Close', axis=1, level=1, drop_level=True)
+                    except:
+                        return None
             else:
                 df = data['Close']
-
+                
             # Czyszczenie danych
             df = df.ffill().dropna()
             if df.empty: return None
 
             # --- 1. BUDOWA INDEKSU SUROWCOWEGO ---
-            # Normalizujemy każdy składnik do 100 na początku okresu, 
-            # żeby Ropa (70$) nie była mniej ważna niż Złoto (2000$).
-            
             norm_oil = (df['CL=F'] / df['CL=F'].iloc[0]) * 100
             norm_copper = (df['HG=F'] / df['HG=F'].iloc[0]) * 100
             norm_gold = (df['GC=F'] / df['GC=F'].iloc[0]) * 100
@@ -15424,15 +15672,13 @@ class MarketProbabilityIndex:
             df['Paper_Assets'] = (df['^GSPC'] / df['^GSPC'].iloc[0]) * 100
             
             # --- 3. RATIO (Klucz do cyklu) ---
-            # Ratio > 1 (lub rosnące) = Surowce wygrywają
-            # Ratio < 1 (lub spadające) = Akcje wygrywają
             df['Supercycle_Ratio'] = df['Hard_Assets'] / df['Paper_Assets']
             
             # Średnia 200-dniowa dla Ratio (Trend)
             df['Ratio_SMA200'] = df['Supercycle_Ratio'].rolling(window=200).mean()
             
             return df
-
+            
         except Exception as e:
             print(f"Błąd Supercycle: {e}")
             return None
@@ -16106,13 +16352,18 @@ class MarketProbabilityIndex:
         
         return fig
     # --- UPDATE: HARD ASSETS MATRIX (Z Wodorem) ---
-    def get_hard_assets_matrix(self):
+    @st.cache_data(ttl=3600)
+    def get_hard_assets_matrix(_self):
         """
         Pobiera dane dla koszyka surowcowego (10 lat).
         Metale: Złoto, Srebro, Miedź.
         Energia: Ropa, Gaz, Uran (ETF), Wodór (Proxy PLUG).
         """
         try:
+            import yfinance as yf
+            import pandas as pd
+            from datetime import datetime, timedelta
+            
             start_date = (datetime.now() - timedelta(days=365*10)).strftime('%Y-%m-%d')
             
             # Mapowanie nazw
@@ -16122,10 +16373,9 @@ class MarketProbabilityIndex:
                 'HG=F': 'Miedź (Copper)',
                 'CL=F': 'Ropa WTI (Oil)',
                 'NG=F': 'Gaz Ziemny (Nat Gas)',
-                'URA':  'Uran (Nuclear ETF)',
-                'PLUG': 'Wodór (Hydrogen Proxy)' # Najlepszy proxy z długą historią
+                'URA': 'Uran (Nuclear ETF)',
+                'PLUG': 'Wodór (Hydrogen Proxy)'
             }
-            
             tickers = list(assets.keys())
             
             # Pobieranie
@@ -16133,17 +16383,19 @@ class MarketProbabilityIndex:
             
             # Fix MultiIndex
             if isinstance(data.columns, pd.MultiIndex):
-                try: df = data.xs('Close', axis=1, level=0, drop_level=True)
-                except: 
-                    try: df = data.xs('Close', axis=1, level=1, drop_level=True)
-                    except: return None
+                try:
+                    df = data.xs('Close', axis=1, level=0, drop_level=True)
+                except:
+                    try:
+                        df = data.xs('Close', axis=1, level=1, drop_level=True)
+                    except:
+                        return None
             else:
                 df = data['Close']
-
+                
             # Upewniamy się, że mamy kolumny
             available = [c for c in df.columns if c in tickers]
             df = df[available].ffill().dropna()
-            
             if df.empty: return None
 
             # Normalizacja (Start = 0%)
@@ -16153,7 +16405,7 @@ class MarketProbabilityIndex:
             df_norm.rename(columns=assets, inplace=True)
             
             return df_norm
-
+            
         except Exception as e:
             print(f"Błąd Hard Assets: {e}")
             return None
@@ -25822,6 +26074,441 @@ class MarketProbabilityIndex:
             print(f"[ERROR] Silnik Omega dla {ticker_symbol}: {e}")
             return fallback_dict
 
+    @st.cache_data(ttl=3600)
+    def get_btc_anomaly_data(_self, symbol="BTC-USD", period="5y", interval="1d", pattern_window=30):
+        """
+        Silnik analityczny: Pobiera dane i odpala matematykę szukającą anomalii.
+        Obejmuje: kanal1 (Cena), kanal2 (Wolumen), kanał 4 (Ekstrema), serce (Fraktale),
+        KRZYŻE ŚREDNICH, DYWERGENCJE (Klasyczne i Ukryte), SQUEEZE, PIN BARY, FVG, SZCZYTY PI CYCLE oraz 
+        MACRO SYGNAŁY DNA (Mayer, RSI Cap, Wyckoff).
+        """
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period=period, interval=interval)
+            if df.empty:
+                return None, []
+
+            df = df.dropna()
+            anomalies = []
+
+            # --- OBLICZENIA POMOCNICZE (Średnie 50/200) ---
+            if len(df) >= 200:
+                sma50 = df['Close'].rolling(window=50).mean()
+                sma200 = df['Close'].rolling(window=200).mean()
+                
+                cross_signals = np.where(sma50 > sma200, 1, 0)
+                cross_diff = np.diff(cross_signals)
+                golden_crosses = np.where(cross_diff == 1)[0] + 1
+                death_crosses = np.where(cross_diff == -1)[0] + 1
+                
+                for idx in golden_crosses:
+                    date = df.index[idx]
+                    anomalies.append({
+                        'type': 'cross', 'cross_type': 'golden', 'date': date,
+                        'display': f"🟡 [{date.strftime('%Y-%m-%d')}] Złoty Krzyż (kanal3 przebija SMA 200 w górę)"
+                    })
+                for idx in death_crosses:
+                    date = df.index[idx]
+                    anomalies.append({
+                        'type': 'cross', 'cross_type': 'death', 'date': date,
+                        'display': f"⚫ [{date.strftime('%Y-%m-%d')}] Krzyż Śmierci (kanal3 przebija SMA 200 w dół)"
+                    })
+
+                # --- NOWE: 💎 DNO POKOLENIOWE (Mayer Multiple < 0.65) ---
+                mayer_multiple = df['Close'] / sma200
+                mayer_bottom = (mayer_multiple < 0.65) & (mayer_multiple.shift(1) >= 0.65)
+                for idx in np.where(mayer_bottom)[0]:
+                    if idx > 200:
+                        date = df.index[idx]
+                        anomalies.append({
+                            'type': 'mayer',
+                            'date': date,
+                            'display': f"💎 [{date.strftime('%Y-%m-%d')}] Wskaźnik Mayera: Dno Pokoleniowe (Cena skrajnie tania vs SMA200)"
+                        })
+
+            # --- SZCZYTY PI CYCLE ---
+            if len(df) >= 350:
+                sma111 = df['Close'].rolling(window=111).mean()
+                sma350_x2 = df['Close'].rolling(window=350).mean() * 2
+                
+                pi_cross = np.where(sma111 > sma350_x2, 1, 0)
+                pi_diff = np.diff(pi_cross)
+                pi_tops = np.where(pi_diff == 1)[0] + 1
+                
+                for idx in pi_tops:
+                    date = df.index[idx]
+                    anomalies.append({
+                        'type': 'picycle',
+                        'date': date,
+                        'display': f"🔥 [{date.strftime('%Y-%m-%d')}] Szczyty Pi Cycle (Historyczny Szczyt Hossy)"
+                    })
+
+            # --- OBLICZANIE RSI ---
+            delta = df['Close'].diff()
+            gain = delta.clip(lower=0).ewm(alpha=1/14, adjust=False).mean()
+            loss = -delta.clip(upper=0).ewm(alpha=1/14, adjust=False).mean()
+            rs = gain / loss
+            df['RSI'] = 100 - (100 / (1 + rs))
+
+            # --- NOWE: 🥶 KAPITULACJA RSI (KREW NA ULICACH) ---
+            rsi_capitulation = (df['RSI'] <= 22) & (df['RSI'].shift(1) > 22)
+            for idx in np.where(rsi_capitulation)[0]:
+                if idx > 14:
+                    date = df.index[idx]
+                    anomalies.append({
+                        'type': 'rsi_cap',
+                        'date': date,
+                        'display': f"🥶 [{date.strftime('%Y-%m-%d')}] Kapitulacja RSI: Krew na ulicach (RSI < 22)"
+                    })
+
+            # --- 1. DYWERGENCJE (SMART MONEY) - NAPRAWIONE POD TREND WZROSTOWY 2023 ---
+            lookback = pattern_window 
+            for i in range(lookback, len(df)):
+                # Szukamy lokalnego dołka z ostatnich 5 dni
+                if df['Close'].iloc[i] <= df['Close'].iloc[max(0, i-5):i].min():
+                    past_window = df['Close'].iloc[max(0, i-lookback):i-5]
+                    if not past_window.empty:
+                        past_min_idx = past_window.idxmin()
+                        past_min_price = past_window.min()
+                        past_min_rsi = df['RSI'].loc[past_min_idx]
+                        
+                        current_price = df['Close'].iloc[i]
+                        current_rsi = df['RSI'].iloc[i]
+
+                        # 1A. KLASYCZNA DYWERGENCJA (Dno bessy - np. 2022)
+                        # Cena robi niższy dołek, a RSI robi wyższy dołek
+                        if current_price < past_min_price * 0.99 and current_rsi > past_min_rsi + 2.0:
+                            anomalies.append({
+                                'type': 'divergence',
+                                'date': df.index[i],
+                                'start_date': past_min_idx,
+                                'display': f"🐋 [{df.index[i].strftime('%Y-%m-%d')}] Akumulacja na dnie (Klasyczna Dywergencja Bycza)"
+                            })
+                            
+                        # 1B. UKRYTA DYWERGENCJA (Kontynuacja trendu - np. 2023)
+                        # Cena robi WYŻSZY dołek, ale RSI zostaje drastycznie wyprzedane (niższy dołek RSI)
+                        elif current_price > past_min_price * 1.02 and current_rsi < past_min_rsi - 3.0 and current_rsi < 45:
+                            anomalies.append({
+                                'type': 'divergence',
+                                'date': df.index[i],
+                                'start_date': past_min_idx,
+                                'display': f"🐋 [{df.index[i].strftime('%Y-%m-%d')}] Paliwo do wzrostów (Ukryta Dywergencja Bycza)"
+                            })
+
+            # --- NOWE: 🌱 WIOSNA WYCKOFFA (Fałszywe Wybicie Dna) ---
+            past_100_low = df['Low'].shift(1).rolling(100).min()
+            spring = (df['Low'] < past_100_low) & (df['Close'] > past_100_low)
+            for idx in np.where(spring)[0]:
+                if idx > 100:
+                    date = df.index[idx]
+                    anomalies.append({
+                        'type': 'wyckoff',
+                        'date': date,
+                        'display': f"🌱 [{date.strftime('%Y-%m-%d')}] Wiosna Wyckoffa (Pułapka na Niedźwiedzie / Fałszywe Wybicie)"
+                    })
+
+            # --- 2. SPRĘŻYNA ZMIENNOŚCI (Volatility Squeeze) ---
+            sma20 = df['Close'].rolling(20).mean()
+            std20 = df['Close'].rolling(20).std()
+            bb_upper = sma20 + 2 * std20
+            bb_lower = sma20 - 2 * std20
+            
+            tr = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift()), abs(df['Low'] - df['Close'].shift())))
+            atr20 = pd.Series(tr).rolling(20).mean()
+            kc_upper = sma20 + 1.5 * atr20
+            kc_lower = sma20 - 1.5 * atr20
+            
+            squeeze_on = (bb_upper < kc_upper) & (bb_lower > kc_lower)
+            squeeze_fire = squeeze_on.shift(1) & ~squeeze_on
+
+            for idx in np.where(squeeze_fire)[0]:
+                if idx > 20:
+                    date = df.index[idx]
+                    anomalies.append({
+                        'type': 'squeeze',
+                        'date': date,
+                        'display': f"💥 [{date.strftime('%Y-%m-%d')}] Wystrzał Sprężyny Zmienności (Squeeze Fire!)"
+                    })
+
+            # --- 3. RZEŹ STOP-LOSSÓW (Liquidity Sweeps / Pin Bary) ---
+            lower_wick = np.minimum(df['Open'], df['Close']) - df['Low']
+            candle_range = df['High'] - df['Low']
+            vol_sma20 = df['Volume'].rolling(20).mean()
+            
+            sweeps = (lower_wick > 0.65 * candle_range) & (df['Volume'] > 1.5 * vol_sma20) & (candle_range > atr20)
+            for idx in np.where(sweeps)[0]:
+                if idx > 20:
+                    date = df.index[idx]
+                    anomalies.append({
+                        'type': 'sweep',
+                        'date': date,
+                        'display': f"🩸 [{date.strftime('%Y-%m-%d')}] Rzeź Stop-Lossów (Pin Bar + Potężny Wolumen)"
+                    })
+
+            # --- 4. MAGNESY PŁYNNOŚCIOWE (FVG) ---
+            fvg_bullish = df['Low'] > df['High'].shift(2)
+            body_prev = abs(df['Close'].shift(1) - df['Open'].shift(1))
+            fvg_bullish_strong = fvg_bullish & (body_prev > atr20.shift(1))
+            
+            for idx in np.where(fvg_bullish_strong)[0]:
+                if idx > 20:
+                    date = df.index[idx]
+                    gap_low = df['High'].iloc[idx-2]
+                    gap_high = df['Low'].iloc[idx]
+                    anomalies.append({
+                        'type': 'fvg',
+                        'date': date,
+                        'gap_low': gap_low,
+                        'gap_high': gap_high,
+                        'display': f"🧲 [{date.strftime('%Y-%m-%d')}] Magnes Płynnościowy (Bycza Luka FVG)"
+                    })
+
+            # --- 5. ANOMALIE CENOWE (kanał 4) ---
+            returns = df['Close'].pct_change().dropna()
+            if not returns.empty:
+                z_scores = (returns - returns.mean()) / returns.std()
+                outliers = z_scores[abs(z_scores) > 3.0]
+                for date, z_val in outliers.items():
+                    direction = "Wzrost" if z_val > 0 else "Spadek"
+                    anomalies.append({
+                        'type': 'price',
+                        'date': date,
+                        'z_score': z_val,
+                        'display': f"🔴 [{date.strftime('%Y-%m-%d')}] kanał 4: Ekstremalny {direction} o {returns.loc[date]*100:.1f}%."
+                    })
+
+            # --- 6. ANOMALIE WOLUMENU (kanal2) ---
+            volume = df['Volume'].replace(0, np.nan).dropna()
+            if not volume.empty:
+                z_scores_vol = (volume - volume.mean()) / volume.std()
+                outliers_vol = z_scores_vol[z_scores_vol > 4.0]
+                for date, z_val in outliers_vol.items():
+                    anomalies.append({
+                        'type': 'volume',
+                        'date': date,
+                        'z_score': z_val,
+                        'display': f"🔵 [{date.strftime('%Y-%m-%d')}] kanal2: Potężny strzał wolumenu. (Z: {z_val:.1f})"
+                    })
+
+            # --- 7. FRAKTALE / PODOBIEŃSTWA HISTORYCZNE (serce) ---
+            if len(df) >= pattern_window * 2:
+                recent_pattern = df['Close'].iloc[-pattern_window:].values
+                recent_std = np.std(recent_pattern)
+                if recent_std != 0:
+                    recent_pattern_norm = (recent_pattern - np.mean(recent_pattern)) / recent_std
+                    close_prices = df['Close'].values[:-pattern_window]
+                    dates = df.index[:-pattern_window]
+
+                    for i in range(len(close_prices) - pattern_window):
+                        historical_slice = close_prices[i:i+pattern_window]
+                        std_hist = np.std(historical_slice)
+                        if std_hist == 0: continue
+                        historical_norm = (historical_slice - np.mean(historical_slice)) / std_hist
+                        correlation = np.corrcoef(recent_pattern_norm, historical_norm)[0, 1]
+
+                        if correlation > 0.92:
+                            anomalies.append({
+                                'type': 'pattern',
+                                'date': dates[i+pattern_window-1],
+                                'start_date': dates[i],
+                                'correlation': correlation,
+                                'display': f"💜 [{dates[i+pattern_window-1].strftime('%Y-%m-%d')}] FRAKTAL (serce): Znaleziono {correlation*100:.1f}% podobieństwa do dzisiejszego rynku!"
+                            })
+
+            # Sortujemy od najnowszych
+            anomalies.sort(key=lambda x: x['date'], reverse=True)
+            return df, anomalies
+            
+        except Exception as e:
+            print(f"Błąd Silnika Anomalii: {e}")
+            return None, []
+
+    @st.fragment
+    def render_anomaly_hunter(self):
+        """
+        Sekcja wizualna: Wyświetla interfejs detektora anomalii i rysuje dedykowany wykres.
+        Wspiera do 10 anomalii jednocześnie oraz zawiera dedykowany panel dolny dla wolumenu.
+        Zaktualizowano o najpotężniejsze sygnały dna MACRO (Mayer, RSI Cap, Wyckoff).
+        """
+        import streamlit as st
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+        st.divider()
+        st.subheader("🕵️ DETEKTOR ANOMALII I WZORCÓW (AI Pattern Hunter)")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            symbol = st.selectbox("Symbol do analizy:", ["BTC-USD", "ETH-USD", "SOL-USD", "NVDA", "TSLA", "MSTR"], key="anomaly_sym")
+        with col2:
+            period = st.selectbox("Zakres danych:", ["2y", "5y", "10y", "max"], index=1, key="anomaly_per")
+        with col3:
+            window = st.slider("Okno wzorca (serce - Dni):", min_value=14, max_value=90, value=30, key="anomaly_win")
+
+        with st.spinner("Skanowanie macierzy czasu i przestrzeni..."):
+            df, anomalies = self.get_btc_anomaly_data(symbol, period, "1d", window)
+
+        if df is None or df.empty:
+            st.error("Brak danych do analizy. Spróbuj zmienić parametry.")
+            return
+
+        if not anomalies:
+            st.info("Brak skrajnych anomalii dla ustalonych parametrów na tym walorze.")
+            return
+
+        c1, c2 = st.columns([1, 2])
+
+        with c1:
+            with st.container(height=600, border=True):
+                st.markdown("### 📋 Baza Danych Anomalii")
+                anomaly_options = [a['display'] for a in anomalies]
+                
+                selected_displays = st.multiselect(
+                    "Wybierz max 10 zdarzeń do wizualizacji:", 
+                    options=anomaly_options,
+                    max_selections=10,
+                    key="anomaly_multi"
+                )
+                
+                selected_anomalies = [a for a in anomalies if a['display'] in selected_displays]
+                
+                if not selected_anomalies:
+                    st.info("Wybierz zdarzenia z listy powyżej, by zobaczyć je na wykresie.")
+
+        with c2:
+            st.markdown("### 📈 Rentgen Anomalii z Wolumenem")
+            fig, (ax, ax_vol) = plt.subplots(2, 1, figsize=(10, 7), gridspec_kw={'height_ratios': [3, 1]})
+            fig.patch.set_facecolor('#0e1117')
+            ax.set_facecolor('#0e1117')
+            ax_vol.set_facecolor('#0e1117')
+
+            # Podstawa: kanal1 (Cena)
+            ax.plot(df.index, df['Close'], label='kanal1 (Cena)', color='#ffffff', linewidth=1.5, alpha=0.9)
+
+            # Średnie zawsze w tle, jeśli są dane
+            if len(df) >= 50:
+                sma50 = df['Close'].rolling(window=50).mean()
+                ax.plot(df.index, sma50, label='kanal3 (SMA 50)', color='#ffaa00', alpha=0.7, linestyle='--')
+            if len(df) >= 200:
+                sma200 = df['Close'].rolling(window=200).mean()
+                ax.plot(df.index, sma200, label='SMA 200', color='#ff00ff', alpha=0.7, linestyle=':')
+
+            # RYSOWANIE WOLUMENU (kanal2)
+            ax_vol.bar(df.index, df['Volume'], color='#555555', alpha=0.7)
+
+            min_dates = []
+            max_dates = []
+
+            # RYSOWANIE WSZYSTKICH WYBRANYCH ANOMALII
+            for selected_anomaly in selected_anomalies:
+                a_type = selected_anomaly['type']
+                date = selected_anomaly['date']
+
+                if a_type == 'pattern':
+                    start = selected_anomaly['start_date']
+                    ax.axvspan(start, date, color='#ff00ff', alpha=0.3, label='serce (Historyczny Fraktal)' if 'serce (Historyczny Fraktal)' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    
+                    recent_start = df.index[-window]
+                    recent_end = df.index[-1]
+                    ax.axvspan(recent_start, recent_end, color='#00ffff', alpha=0.3, label='Obecny Kształt Rynku' if 'Obecny Kształt Rynku' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    
+                    min_dates.append(min(start, recent_start) - pd.Timedelta(days=60))
+                    max_dates.append(recent_end + pd.Timedelta(days=30))
+
+                elif a_type == 'price':
+                    color = '#00ff00' if selected_anomaly.get('z_score', 0) > 0 else '#ff0000'
+                    ax.plot(date, df['Close'].loc[date], marker='o', markersize=12, color=color, label='kanał 4 (Ekstremum)' if 'kanał 4 (Ekstremum)' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    min_dates.append(date - pd.Timedelta(days=90))
+                    max_dates.append(date + pd.Timedelta(days=90))
+
+                elif a_type == 'volume':
+                    ax.axvline(x=date, color='#00aaff', linestyle=':', linewidth=3, alpha=0.8, label='kanal2 (Strzał Wolumenu)' if 'kanal2 (Strzał Wolumenu)' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    ax.plot(date, df['Close'].loc[date], marker='^', markersize=14, color='#00aaff')
+                    ax_vol.plot(date, df['Volume'].loc[date], marker='*', markersize=12, color='#00aaff')
+                    min_dates.append(date - pd.Timedelta(days=90))
+                    max_dates.append(date + pd.Timedelta(days=90))
+                    
+                elif a_type == 'cross':
+                    if selected_anomaly['cross_type'] == 'golden':
+                        ax.plot(date, df['Close'].loc[date], marker='*', markersize=18, color='#ffff00', label='Złoty Krzyż' if 'Złoty Krzyż' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    else:
+                        ax.plot(date, df['Close'].loc[date], marker='X', markersize=16, color='#888888', label='Krzyż Śmierci' if 'Krzyż Śmierci' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    min_dates.append(date - pd.Timedelta(days=120))
+                    max_dates.append(date + pd.Timedelta(days=120))
+                    
+                elif a_type == 'divergence':
+                    start = selected_anomaly['start_date']
+                    ax.plot([start, date], [df['Close'].loc[start], df['Close'].loc[date]], color='#00ff00', linestyle='-', linewidth=3, label='🐋 Ukryta Dywergencja' if '🐋 Ukryta Dywergencja' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    ax.plot(date, df['Close'].loc[date], marker='^', markersize=14, color='#00ff00')
+                    min_dates.append(start - pd.Timedelta(days=40))
+                    max_dates.append(date + pd.Timedelta(days=40))
+
+                elif a_type == 'squeeze':
+                    ax.axvspan(date - pd.Timedelta(days=3), date + pd.Timedelta(days=3), color='#ffff00', alpha=0.4, label='💥 Wystrzał Sprężyny' if '💥 Wystrzał Sprężyny' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    min_dates.append(date - pd.Timedelta(days=60))
+                    max_dates.append(date + pd.Timedelta(days=60))
+
+                elif a_type == 'sweep':
+                    ax.plot(date, df['Low'].loc[date], marker='v', markersize=16, color='#ff00ff', label='🩸 Rzeź Stop-Lossów' if '🩸 Rzeź Stop-Lossów' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    min_dates.append(date - pd.Timedelta(days=60))
+                    max_dates.append(date + pd.Timedelta(days=60))
+
+                elif a_type == 'fvg':
+                    gap_low = selected_anomaly['gap_low']
+                    gap_high = selected_anomaly['gap_high']
+                    end_zone = date + pd.Timedelta(days=45)
+                    ax.fill_between([date, end_zone], gap_low, gap_high, color='#00aaff', alpha=0.3, label='🧲 Magnes FVG' if '🧲 Magnes FVG' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    ax.plot([date, end_zone], [gap_low, gap_low], color='#00aaff', linestyle='--', linewidth=1)
+                    ax.plot([date, end_zone], [gap_high, gap_high], color='#00aaff', linestyle='--', linewidth=1)
+                    min_dates.append(date - pd.Timedelta(days=30))
+                    max_dates.append(end_zone + pd.Timedelta(days=30))
+
+                elif a_type == 'picycle':
+                    ax.plot(date, df['Close'].loc[date], marker='P', markersize=18, color='#ff5500', markeredgecolor='white', label='Szczyty Pi Cycle' if 'Szczyty Pi Cycle' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    min_dates.append(date - pd.Timedelta(days=120))
+                    max_dates.append(date + pd.Timedelta(days=120))
+
+                elif a_type == 'mayer':
+                    ax.plot(date, df['Close'].loc[date], marker='D', markersize=14, color='#00ffff', label='💎 Dno Pokoleniowe' if '💎 Dno Pokoleniowe' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    min_dates.append(date - pd.Timedelta(days=180))
+                    max_dates.append(date + pd.Timedelta(days=180))
+
+                elif a_type == 'rsi_cap':
+                    ax.plot(date, df['Close'].loc[date], marker='s', markersize=14, color='#ffffff', markeredgecolor='blue', label='🥶 Kapitulacja RSI' if '🥶 Kapitulacja RSI' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    min_dates.append(date - pd.Timedelta(days=60))
+                    max_dates.append(date + pd.Timedelta(days=60))
+
+                elif a_type == 'wyckoff':
+                    ax.plot(date, df['Close'].loc[date], marker='^', markersize=16, color='#00ff88', label='🌱 Wiosna Wyckoffa' if '🌱 Wiosna Wyckoffa' not in [t.get_label() for t in ax.get_legend_handles_labels()[0]] else "")
+                    min_dates.append(date - pd.Timedelta(days=60))
+                    max_dates.append(date + pd.Timedelta(days=60))
+
+            if min_dates and max_dates:
+                ax.set_xlim([min(min_dates), max(max_dates)])
+                ax_vol.set_xlim([min(min_dates), max(max_dates)])
+
+            # Kosmetyka górnego wykresu
+            ax.tick_params(colors='white', labelsize=9)
+            ax.set_xticklabels([]) 
+            for spine in ax.spines.values():
+                spine.set_edgecolor('#333333')
+            ax.grid(color='#333333', linestyle='--', alpha=0.3)
+            ax.legend(facecolor='#0e1117', edgecolor='#333333', labelcolor='white', loc='upper left')
+
+            # Kosmetyka dolnego wykresu
+            ax_vol.tick_params(colors='white', labelsize=9)
+            for spine in ax_vol.spines.values():
+                spine.set_edgecolor('#333333')
+            ax_vol.grid(color='#333333', linestyle='--', alpha=0.3, axis='y')
+
+            plt.subplots_adjust(hspace=0.05)
+            st.pyplot(fig)
+            plt.close(fig)
+
     def scan_for_omega_gems(self, tickers):
         """Skaner Okazji: Szuka tylko tych, gdzie Smart Money > 80%"""
         gems = []
@@ -25847,95 +26534,8 @@ class MarketProbabilityIndex:
             with st.container(height=1000, border=True): 
                 st.markdown("### 🎛️ CENTRUM DOWODZENIA")
                 
-                # PODZIAŁ WEWNĘTRZNY NA 2 KOLUMNY (Zmniejszenie i upakowanie guzików)
-                sub1, sub2 = st.columns(2)
-                
-                with sub1:
-                    st.markdown("**1. GLOBAL MARKET AGREGATOR**")
-                    if st.button("🧬 URUCHOM AGREGATOR", key="btn_agg", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'aggregator'
-                    
-                    st.markdown("**2. CYBORG INDEX**")
-                    if st.button("🦾 CZYTAJ CYKL", key="btn_cyb_idx", type="secondary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'cyborg_index'
-
-                    st.markdown("**3. GPW SQUEEZE RADAR**")
-                    if st.button("🔥 NAMIERZ SHORTY", key="btn_gpw_sq", type="secondary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'gpw_squeeze'
-                        
-                    st.markdown("**4. GPW SMART MONEY**")
-                    if st.button("🕵️ SZUKAJ AKUMULACJI", key="btn_gpw_sm", type="secondary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'gpw_smart_money'
-                        
-                    st.markdown("**5. GPW VOLATILITY SPRING**")
-                    if st.button("💥 SKANUJ WYKRES", key="btn_gpw_spr", type="secondary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'volatility_spring'
-
-                    st.markdown("**6. GPW OMEGA SNIPER**")
-                    if st.button("🔥 ODPAL OMEGĘ", key="btn_gpw_om", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'gpw_omega'
-                        
-                    st.markdown("**7. AI TRADING COPILOT**")
-                    if st.button("🎯 PLAN BITWY", key="btn_gpw_cop", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'ai_copilot'
-
-                    st.markdown("**8. RADAR POZYCJI**")
-                    if st.button("📈 ŚLEDŹ ZYSKI", key="btn_portf", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'lambo_portfolio'
-
-                    st.markdown("**9. WALL STREET OMEGA**")
-                    if st.button("🦅 ODPAL OMEGĘ (USA)", key="btn_usa_om", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'usa_omega'
-                        
-                    st.markdown("**10. USA AI COPILOT**")
-                    if st.button("🎯 PLAN BITWY (USA)", key="btn_usa_cop", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'usa_copilot'
-
-                with sub2:
-                    st.markdown("**11. DEFENSE WAR ROOM**")
-                    if st.button("⚔️ SKANUJ ZBROJENIÓWKĘ", key="btn_def_wr", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'war_room_aggregator'
-
-                    st.markdown("**12. DEFENSE AI COPILOT**")
-                    if st.button("🎯 PLAN BITWY (WAR)", key="btn_def_cop", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'defense_copilot'
-
-                    st.markdown("**13. NEXT-GEN FUELS**")
-                    if st.button("🔬 SKANUJ URAN", key="btn_fuel_rd", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'fuels_radar_aggregator'
-
-                    st.markdown("**14. FUELS AI COPILOT**")
-                    if st.button("🎯 GENERUJ PLAN (PALIWA)", key="btn_fuel_cop", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'fuels_copilot'
-
-                    st.markdown("**15. CYBORG & INDUSTRY**")
-                    if st.button("⚙️ SKANUJ ROBOTYKĘ", key="btn_robo_rd", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'robo_radar_aggregator'
-
-                    st.markdown("**16. CYBORG AI COPILOT**")
-                    if st.button("🎯 GENERUJ PLAN (ROBO)", key="btn_robo_cop", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'robo_copilot'
-
-                    st.markdown("**17. LITHIUM OMEGA**")
-                    if st.button("⛏️ ODPAL OMEGĘ (LIT)", key="btn_li_om", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'lithium_omega'
-                        
-                    st.markdown("**18. LITHIUM AI COPILOT**")
-                    if st.button("🎯 PLAN BITWY (LIT)", key="btn_li_cop", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'lithium_copilot'
-
-                    st.markdown("**19. RARE EARTH OMEGA**")
-                    if st.button("🧭 ODPAL OMEGĘ (RE)", key="btn_re_om", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'rare_earth_omega'
-                        
-                    st.markdown("**20. RARE EARTH AI COPILOT**")
-                    if st.button("🎯 PLAN BITWY (RE)", key="btn_re_cop", type="primary", width='stretch'):
-                        st.session_state['active_lazy_chart'] = 'rare_earth_copilot'
-                
-                st.divider()
-
                 # WSZYSTKIE GUZIKI WCHODZĄ DO ŚRODKA (Wcięcie przesunięte w prawo)
-                # 3 KOLUMNY GUZIKÓW WEWNĄTRZ OKIENKA Z SUWAKIEM
+                # 3 KOLUMNY GUZIKÓW WEWNĄTRZ OKIENKA Z SUWAKIEM (PRZENIESIONE NA GÓRĘ)
                 b1, b2, b3 = st.columns(3)
 
                 # --- KOLUMNA 1: MAKROEKONOMIA, FED I SUROWCE ---
@@ -26128,6 +26728,93 @@ class MarketProbabilityIndex:
                     if st.button("🎮 Metaverse Land "): st.session_state['active_lazy_chart'] = 'metaverse'
                     if st.button("🏗️ NFT Infra (IMX/FLOW)"): st.session_state['active_lazy_chart'] = 'nft_infra'
                     if st.button("🖼️ The Polacy", key="nft_polacy_btn"): st.session_state['active_lazy_chart'] = 'nft_polacy'
+
+                st.divider()
+
+                # PODZIAŁ WEWNĘTRZNY NA 2 KOLUMNY DLA GŁÓWNYCH GUZIKÓW (PRZENIESIONE NA DÓŁ)
+                sub1, sub2 = st.columns(2)
+                
+                with sub1:
+                    st.markdown("**1. GLOBAL MARKET AGREGATOR**")
+                    if st.button("🧬 URUCHOM AGREGATOR", key="btn_agg", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'aggregator'
+                    
+                    st.markdown("**2. CYBORG INDEX**")
+                    if st.button("🦾 CZYTAJ CYKL", key="btn_cyb_idx", type="secondary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'cyborg_index'
+
+                    st.markdown("**3. GPW SQUEEZE RADAR**")
+                    if st.button("🔥 NAMIERZ SHORTY", key="btn_gpw_sq", type="secondary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'gpw_squeeze'
+                        
+                    st.markdown("**4. GPW SMART MONEY**")
+                    if st.button("🕵️ SZUKAJ AKUMULACJI", key="btn_gpw_sm", type="secondary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'gpw_smart_money'
+                        
+                    st.markdown("**5. GPW VOLATILITY SPRING**")
+                    if st.button("💥 SKANUJ WYKRES", key="btn_gpw_spr", type="secondary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'volatility_spring'
+
+                    st.markdown("**6. GPW OMEGA SNIPER**")
+                    if st.button("🔥 ODPAL OMEGĘ", key="btn_gpw_om", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'gpw_omega'
+                        
+                    st.markdown("**7. AI TRADING COPILOT**")
+                    if st.button("🎯 PLAN BITWY", key="btn_gpw_cop", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'ai_copilot'
+
+                    st.markdown("**8. RADAR POZYCJI**")
+                    if st.button("📈 ŚLEDŹ ZYSKI", key="btn_portf", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'lambo_portfolio'
+
+                    st.markdown("**9. WALL STREET OMEGA**")
+                    if st.button("🦅 ODPAL OMEGĘ (USA)", key="btn_usa_om", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'usa_omega'
+                        
+                    st.markdown("**10. USA AI COPILOT**")
+                    if st.button("🎯 PLAN BITWY (USA)", key="btn_usa_cop", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'usa_copilot'
+
+                with sub2:
+                    st.markdown("**11. DEFENSE WAR ROOM**")
+                    if st.button("⚔️ SKANUJ ZBROJENIÓWKĘ", key="btn_def_wr", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'war_room_aggregator'
+
+                    st.markdown("**12. DEFENSE AI COPILOT**")
+                    if st.button("🎯 PLAN BITWY (WAR)", key="btn_def_cop", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'defense_copilot'
+
+                    st.markdown("**13. NEXT-GEN FUELS**")
+                    if st.button("🔬 SKANUJ PALIWA", key="btn_fuel_rd", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'fuels_radar_aggregator'
+
+                    st.markdown("**14. FUELS AI COPILOT**")
+                    if st.button("🎯 PLAN BITWY (PALIWA)", key="btn_fuel_cop", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'fuels_copilot'
+
+                    st.markdown("**15. CYBORG & INDUSTRY**")
+                    if st.button("⚙️ SKANUJ ROBOTYKĘ", key="btn_robo_rd", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'robo_radar_aggregator'
+
+                    st.markdown("**16. CYBORG AI COPILOT**")
+                    if st.button("🎯 PLAN BITWY (ROBO)", key="btn_robo_cop", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'robo_copilot'
+
+                    st.markdown("**17. LITHIUM OMEGA**")
+                    if st.button("⛏️ ODPAL OMEGĘ (LIT)", key="btn_li_om", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'lithium_omega'
+                        
+                    st.markdown("**18. LITHIUM AI COPILOT**")
+                    if st.button("🎯 PLAN BITWY (LIT)", key="btn_li_cop", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'lithium_copilot'
+
+                    st.markdown("**19. RARE EARTH OMEGA**")
+                    if st.button("🧭 ODPAL OMEGĘ (RARE)", key="btn_re_om", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'rare_earth_omega'
+                        
+                    st.markdown("**20. RARE EARTH AI COPILOT**")
+                    if st.button("🎯 PLAN BITWY (RARE)", key="btn_re_cop", type="primary", width='stretch'):
+                        st.session_state['active_lazy_chart'] = 'rare_earth_copilot'
         
         with c2:
             chart_type = st.session_state.get('active_lazy_chart')
@@ -29441,10 +30128,10 @@ def main():
         with tabs[3]: 
             c_n1, c_n2 = st.columns(2)
             with c_n1: 
-                st.subheader("Gospodarka")
+                st.subheader("Gospodarka YFinance")
                 for ti, s, l in eco_h: st.markdown(f"[{ti}]({l})")
             with c_n2: 
-                st.subheader("Krypto")
+                st.subheader("Krypto CoinTelegraph BeInCrypto")
                 for ti, s, l in cry_h: st.markdown(f"[{ti}]({l})")
 
         with tabs[4]:
@@ -29785,8 +30472,10 @@ def main():
         # Pobieranie CSV
         if os.path.isfile("market_log.csv"):
             with open("market_log.csv", "rb") as f: st.download_button("📥 Pobierz CSV", f, "lambo.csv")
+    
     app.render_opportunity_scanners()
     app.render_omega_terminal()
+    app.render_anomaly_hunter()
     app.display_bottom_ticker()
 
 # ==========================================================
