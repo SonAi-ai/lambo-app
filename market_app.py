@@ -15150,42 +15150,31 @@ class MarketProbabilityIndex:
 
     def setup_analytics(self):
         """
-        Wysyła dane do GA4 (Metoda Python - Server-Side).
-        PANCERNA METODA: Działa zawsze, omija AdBlocki, liczy każdą minutę.
+        Wysyła dane do GA4 (CZYSTA METODA PYTHON - SERVER-SIDE).
+        ZAMIENIAMY JS NA PANCERNE PARAMETRY URL.
+        Streamlit zapisuje ID w pasku adresu przeglądarki. Po kliknięciu F5,
+        ID zostaje w linku, więc serwer wie, że to wciąż ta sama sesja.
         """
         import time
         import uuid
         import requests
         import threading
-        import os
-        import json
         import streamlit as st
 
-        # 1. Konfiguracja
         GA_ID = "G-D4BM5ZM6NB"
-        API_SECRET = "VNL2Bm-YQo2M9HXytX6P9A" # WYMAGANY przy tej metodzie
-        id_filename = "user_id.json"
-        
-        # --- LOGIKA IDENTYFIKACJI (CID) ---
-        
-        # >>> STARY KOD (Zablokowany hashtagami - nadpisywał u wszystkich to samo ID z pliku) <<<
-        # try:
-        #     if os.path.exists(id_filename):
-        #         with open(id_filename, 'r') as f:
-        #             data = json.load(f)
-        #             cid = data.get('client_id')
-        #     else:
-        #         cid = str(uuid.uuid4())
-        #         with open(id_filename, 'w') as f:
-        #             json.dump({'client_id': cid}, f)
-        # except:
-        #     cid = str(uuid.uuid4())
-        
-        # >>> NOWY KOD (Czysta sesja Streamlit - każdy użytkownik dostaje własne, unikalne ID) <<<
-        if 'client_id' not in st.session_state:
-            st.session_state['client_id'] = str(uuid.uuid4())
-        cid = st.session_state['client_id']
-        # =========================================================
+        API_SECRET = "VNL2Bm-YQo2M9HXytX6P9A"
+
+        # --- LOGIKA IDENTYFIKACJI (CZYSTY PYTHON + URL PARAMETERS) ---
+        # Sprawdzamy, czy w adresie URL jest już nasz ukryty identyfikator
+        if "uid" in st.query_params:
+            cid = st.query_params["uid"]
+        else:
+            # Pierwsze wejście - generujemy nowe ID i doklejamy do adresu URL
+            cid = str(uuid.uuid4())
+            st.query_params["uid"] = cid
+            
+        # Zapisujemy do session_state na wypadek działania wewnątrz zakładek
+        st.session_state['client_id'] = cid
 
         # --- LOGIKA SESJI I CZASU ---
         if 'ga_session_id' not in st.session_state:
@@ -15225,10 +15214,10 @@ class MarketProbabilityIndex:
             "client_id": cid,
             "user_id": cid, 
             "non_personalized_ads": False,
-            "timestamp_micros": int(current_time * 1000000), # Ważne dla dokładności czasu
+            "timestamp_micros": int(current_time * 1000000), 
             "events": [
                 {
-                    "name": "page_view", # Zdarzenie podstawowe
+                    "name": "page_view", 
                     "params": {
                         "session_id": sid,
                         "engagement_time_msec": engagement_time_msec,
@@ -15253,7 +15242,6 @@ class MarketProbabilityIndex:
         # Używamy wątku, żeby nie spowalniać działania aplikacji
         def send_ga_thread(payload_data):
             try:
-                # User-Agent udający przeglądarkę, żeby Google nie odrzuciło jako bota
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Content-Type': 'application/json'
@@ -29910,16 +29898,62 @@ class MarketProbabilityIndex:
                         st.warning("⚠️ **WNIOSKI:** Wysokie słupki trendów oznaczają wejście 'ulicy'. Kiedy wykres staje się zbyt gęsty i kolorowy – czas uciekać, bo fryzjerzy właśnie zaczynają kupować krypto.")
     
 def show_ad_splash():
-    if 'ad_shown' not in st.session_state: st.session_state['ad_shown'] = False
+    import time
+    import base64
+    import streamlit as st
+
+    if 'ad_shown' not in st.session_state: 
+        st.session_state['ad_shown'] = False
+        
     if not st.session_state['ad_shown']:
-        st.markdown("""
+        # Tworzymy pusty kontener do płynnej podmiany ekranów reklamowych
+        splash_placeholder = st.empty()
+        
+        # --- Krok 1: Tekst "MIEJSCE NA TWOJĄ REKLAMĘ" (Twoja oryginalna ramka) ---
+        splash_placeholder.markdown("""
         <style>
         .splash-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: black; display: flex; justify-content: center; align-items: center; z-index: 999999; }
         .ad-box { width: 80%; height: 80%; border: 5px solid red; box-shadow: 0 0 20px red, 0 0 40px darkred; display: flex; justify-content: center; align-items: center; color: white; font-size: 40px; font-family: 'Courier New', monospace; text-transform: uppercase; font-weight: bold; text-align: center; background: #110000; }
         </style>
         <div class="splash-container"><div class="ad-box">MIEJSCE NA TWOJA REKLAME<br>(Tu moze byc Twoj baner)</div></div>
         """, unsafe_allow_html=True)
-        time.sleep(3); st.session_state['ad_shown'] = True; st.rerun()
+        
+        time.sleep(3) # Wyświetlamy tekst przez 3 sekundy
+        
+        # --- Krok 2: Zdjęcie reklamowe (akademia1.png) ---
+        img_html = ""
+        try:
+            with open("akademia1.png", "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode()
+            img_html = f"""
+            <style>
+            .splash-container-img {{ position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: black; display: flex; justify-content: center; align-items: center; z-index: 999999; }}
+            </style>
+            <div class="splash-container-img">
+                <img src='data:image/png;base64,{encoded_string}' style='max-width:90%; max-height:90%; object-fit: contain;'>
+            </div>
+            """
+        except FileNotFoundError:
+            # Zabezpieczenie na wypadek braku zdjęcia na serwerze
+            img_html = """
+            <style>
+            .splash-container-img { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: black; display: flex; justify-content: center; align-items: center; z-index: 999999; }
+            </style>
+            <div class="splash-container-img">
+                <div style='color:#ff0055; font-size:30px; font-family: Courier New;'>⚠️ BRAK PLIKU: akademia1.png</div>
+            </div>
+            """
+            
+        # Podmieniamy czerwoną ramkę na zdjęcie
+        splash_placeholder.markdown(img_html, unsafe_allow_html=True)
+        
+        time.sleep(8) # Wyświetlamy zdjęcie reklamowe przez 5 sekund
+        
+        # --- Krok 3: Koniec reklam, wpuszczamy do programu ---
+        st.session_state['ad_shown'] = True
+        splash_placeholder.empty() # Czyścimy ekran
+        st.rerun() # Odpalamy główny kod aplikacji
+        
 # --- MAIN (v51 - PRZYWRÓCONA STREFA MAKRO & ON-CHAIN) ---
 def main():
     import matplotlib.pyplot as plt
