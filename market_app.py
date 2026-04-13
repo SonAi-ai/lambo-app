@@ -12285,7 +12285,7 @@ class MarketProbabilityIndex:
             buy_signals = data[sig == 1]
             sell_signals = data[sig == -1]
             
-            ax.plot(data.index, data['Close'], color='white', linewidth=1.2, label='Cena BTC', alpha=0.8)
+            ax.plot(data.index, data['Close'], color='white', linewidth=1.2, label='Cena', alpha=0.8)
             ax.plot(data.index, st_up, color='#00ff55', linewidth=2.5, label='Wsparcie (LONG)')
             ax.plot(data.index, st_down, color='#ff0055', linewidth=2.5, label='Opór (SHORT)')
 
@@ -26860,64 +26860,64 @@ class MarketProbabilityIndex:
                     if st.button("💥 SKANUJ WYKRES", key="btn_gpw_spr", type="secondary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'volatility_spring'
 
-                    st.markdown("**6. GPW OMEGA SNIPER**")
+                    st.markdown("**6. GPW OMEGA SNIPER (1)**")
                     if st.button("🔥 ODPAL OMEGĘ", key="btn_gpw_om", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'gpw_omega'
                         
-                    st.markdown("**7. AI TRADING COPILOT**")
+                    st.markdown("**7. AI TRADING COPILOT (2)**")
                     if st.button("🎯 PLAN BITWY", key="btn_gpw_cop", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'ai_copilot'
 
-                    st.markdown("**8. RADAR POZYCJI**")
+                    st.markdown("**8. RADAR POZYCJI (3)**")
                     if st.button("📈 ŚLEDŹ ZYSKI", key="btn_portf", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'lambo_portfolio'
 
-                    st.markdown("**9. WALL STREET OMEGA**")
+                    st.markdown("**9. WALL STREET OMEGA (1)**")
                     if st.button("🦅 ODPAL OMEGĘ (USA)", key="btn_usa_om", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'usa_omega'
                         
-                    st.markdown("**10. USA AI COPILOT**")
+                    st.markdown("**10. USA AI COPILOT (2)**")
                     if st.button("🎯 PLAN BITWY (USA)", key="btn_usa_cop", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'usa_copilot'
 
                 with sub2:
-                    st.markdown("**11. DEFENSE WAR ROOM**")
+                    st.markdown("**11. DEFENSE WAR ROOM (1)**")
                     if st.button("⚔️ SKANUJ ZBROJENIÓWKĘ", key="btn_def_wr", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'war_room_aggregator'
 
-                    st.markdown("**12. DEFENSE AI COPILOT**")
+                    st.markdown("**12. DEFENSE AI COPILOT (2)**")
                     if st.button("🎯 PLAN BITWY (WAR)", key="btn_def_cop", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'defense_copilot'
 
-                    st.markdown("**13. NEXT-GEN FUELS**")
+                    st.markdown("**13. NEXT-GEN FUELS (1)**")
                     if st.button("🔬 SKANUJ PALIWA", key="btn_fuel_rd", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'fuels_radar_aggregator'
 
-                    st.markdown("**14. FUELS AI COPILOT**")
+                    st.markdown("**14. FUELS AI COPILOT (2)**")
                     if st.button("🎯 PLAN BITWY (PALIWA)", key="btn_fuel_cop", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'fuels_copilot'
 
-                    st.markdown("**15. CYBORG & INDUSTRY**")
+                    st.markdown("**15. CYBORG & INDUSTRY (1)**")
                     if st.button("⚙️ SKANUJ ROBOTYKĘ", key="btn_robo_rd", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'robo_radar_aggregator'
 
-                    st.markdown("**16. CYBORG AI COPILOT**")
+                    st.markdown("**16. CYBORG AI COPILOT (2)**")
                     if st.button("🎯 PLAN BITWY (ROBO)", key="btn_robo_cop", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'robo_copilot'
 
-                    st.markdown("**17. LITHIUM OMEGA**")
+                    st.markdown("**17. LITHIUM OMEGA (1)**")
                     if st.button("⛏️ ODPAL OMEGĘ (LIT)", key="btn_li_om", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'lithium_omega'
                         
-                    st.markdown("**18. LITHIUM AI COPILOT**")
+                    st.markdown("**18. LITHIUM AI COPILOT (2)**")
                     if st.button("🎯 PLAN BITWY (LIT)", key="btn_li_cop", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'lithium_copilot'
 
-                    st.markdown("**19. RARE EARTH OMEGA**")
+                    st.markdown("**19. RARE EARTH OMEGA (1)**")
                     if st.button("🧭 ODPAL OMEGĘ (RARE)", key="btn_re_om", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'rare_earth_omega'
                         
-                    st.markdown("**20. RARE EARTH AI COPILOT**")
+                    st.markdown("**20. RARE EARTH AI COPILOT (2)**")
                     if st.button("🎯 PLAN BITWY (RARE)", key="btn_re_cop", type="primary", width='stretch'):
                         st.session_state['active_lazy_chart'] = 'rare_earth_copilot'
         
