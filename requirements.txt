@@ -23,3 +23,6 @@ nest-asyncio
 scipy
 beautifulsoup4
 pyTelegramBotAPI
+kaleido
+fpdf
+deep-translator

@@ -5173,6 +5173,162 @@ st.set_page_config(
     initial_sidebar_state="expanded"  # <--- TO OTWIERA PORTFEL NA STARCIE
 )
 
+class EarlyAnomalyDetector:
+    """Moduł wczesnego wykrywania anomalii (Kongres, CFO, VIX, Put/Call)"""
+    def __init__(self):
+        self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+
+    def render_anomaly_dashboard(self):
+        import streamlit as st
+        
+        st.divider()
+        st.subheader("🚨 Wczesne Wykrywanie Anomalii (Zwiad On-Demand)")
+        st.info("Moduł skanuje w poszukiwaniu ukrytych ruchów: transakcji polityków, ewakuacji CFO, paniki na opcjach VIX oraz anomalii Put/Call Ratio.")
+        
+        if st.button("🚀 ODPAL GŁĘBOKI SKAN ANOMALII", type="primary", use_container_width=True):
+            # FIX: Usunięto st.spinner, który powoduje biały ekran (bug Streamlit w @st.fragment)
+            status_msg = st.warning("⏳ Uruchamiam 4 moduły skanowania... To może potrwać kilkanaście sekund. Czekaj...")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.markdown("### 🏛️ Radary Polityczne")
+                pol_data = self.scan_politicians()
+                self._display_results(pol_data, "Brak podejrzanych ruchów polityków w ostatnich dniach.")
+
+            with col2:
+                st.markdown("### 👔 Raporty CFO (EDGAR)")
+                cfo_data = self.scan_cfo_sales()
+                self._display_results(cfo_data, "Brak panicznej ewakuacji CFO (Form 4).")
+
+            with col3:
+                st.markdown("### 📉 Indeks Strachu (VIX)")
+                vix_data = self.scan_vix_anomalies()
+                self._display_results(vix_data, "Zmienność wolumenu VIX w normie.")
+                
+            with col4:
+                st.markdown("### 🛡️ Smart Money (Put/Call)")
+                pce_data = self.scan_put_call_anomalies()
+                self._display_results(pce_data, "Wskaźnik Put/Call w strefie neutralnej.")
+                
+            status_msg.success("✅ Skanowanie zakończone!")
+
+    def _display_results(self, data_list, success_msg):
+        import streamlit as st
+        if data_list:
+            for item in data_list:
+                st.warning(item)
+        else:
+            st.success(success_msg)
+
+    def scan_politicians(self):
+        import requests
+        import pandas as pd
+        from datetime import datetime, timedelta
+        import warnings
+        warnings.filterwarnings('ignore')
+        
+        anomalies = []
+        try:
+            url = "https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json"
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                df = pd.DataFrame(data)
+                df['transaction_date'] = pd.to_datetime(df['transaction_date'], errors='coerce')
+                
+                recent_limit = datetime.now() - timedelta(days=21)
+                recent_df = df[df['transaction_date'] >= recent_limit]
+                
+                for _, row in recent_df.iterrows():
+                    amount = str(row['amount'])
+                    if "$500,000" in amount or "$1,000,000" in amount or "$5,000,000" in amount:
+                        if row['type'] == 'sale_full' or row['type'] == 'sale_partial':
+                            anomalies.append(f"🔴 {row['representative']} sprzedał {row['ticker']} ({amount}) dnia {row['transaction_date'].strftime('%Y-%m-%d')}")
+                        elif row['type'] == 'purchase':
+                            anomalies.append(f"🟢 {row['representative']} kupił {row['ticker']} ({amount}) dnia {row['transaction_date'].strftime('%Y-%m-%d')}")
+        except Exception as e:
+            anomalies.append(f"Błąd radaru Kongresu: {e}")
+            
+        return anomalies
+
+    def scan_cfo_sales(self):
+        import requests
+        from bs4 import BeautifulSoup
+        
+        anomalies = []
+        try:
+            url = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=4&company=&dateb=&owner=include&start=0&count=100&output=atom"
+            response = requests.get(url, headers=self.headers, timeout=5)
+            if response.status_code == 200:
+                # FIX: Bezpieczny parser HTML zamiast XML
+                soup = BeautifulSoup(response.content, 'html.parser')
+                entries = soup.find_all('entry')
+                
+                cfo_sales_count = 0
+                for entry in entries:
+                    title = entry.title.text.lower() if entry.title else ""
+                    if 'cfo' in title or 'chief financial officer' in title:
+                        cfo_sales_count += 1
+                        
+                if cfo_sales_count > 3:
+                    anomalies.append(f"👔 Zmasowana aktywność: {cfo_sales_count} formularzy Form 4 od CFO w najnowszym strumieniu SEC. Możliwa ucieczka z rynków.")
+        except Exception as e:
+            anomalies.append(f"Błąd radaru SEC: {e}")
+            
+        return anomalies
+
+    def scan_vix_anomalies(self):
+        import yfinance as yf
+        import pandas as pd
+        
+        anomalies = []
+        try:
+            vix = yf.download('^VIX', period='2mo', interval='1d', progress=False)
+            if isinstance(vix.columns, pd.MultiIndex):
+                vix.columns = vix.columns.droplevel(1)
+            
+            vix = vix.dropna()
+            # FIX: Upewnienie się, że pobrana kolumna istnieje
+            if not vix.empty and len(vix) > 30 and 'Volume' in vix.columns:
+                vol = vix['Volume']
+                if vol.iloc[-1] > 0:
+                    sma_30 = vol.rolling(30).mean()
+                    current_vol = vol.iloc[-1]
+                    avg_vol = sma_30.iloc[-1]
+                    
+                    if avg_vol > 0 and current_vol > (avg_vol * 3.0):
+                        anomalies.append(f"🚨 Wolumen opcji VIX eksplodował! Obecny: {current_vol:,.0f} vs Średnia: {avg_vol:,.0f} (Wzrost >300%). Ktoś ładuje ogromne pieniądze w ubezpieczenia przed krachem.")
+                    elif avg_vol > 0 and current_vol > (avg_vol * 2.0):
+                        anomalies.append(f"⚠️ Wolumen VIX podwyższony (>200% normy). Narasta napięcie na rynku.")
+        except Exception as e:
+            pass 
+            
+        return anomalies
+
+    def scan_put_call_anomalies(self):
+        import yfinance as yf
+        import pandas as pd
+        
+        anomalies = []
+        try:
+            pce = yf.download('^PCE', period='1mo', interval='1d', progress=False)
+            if isinstance(pce.columns, pd.MultiIndex):
+                pce.columns = pce.columns.droplevel(1)
+                
+            pce = pce.dropna()
+            # FIX: Zabezpieczenie przed brakiem kolumny Close
+            if not pce.empty and 'Close' in pce.columns:
+                last_pce = float(pce['Close'].iloc[-1])
+                if last_pce > 1.2:
+                    anomalies.append(f"📉 Ekstremalny strach na opcjach! Put/Call Ratio wynosi {last_pce:.2f} (norma ~0.8). Instytucje masowo kupują Puty grając na spadki.")
+                elif last_pce < 0.6:
+                    anomalies.append(f"📈 Skrajna chciwość! Put/Call Ratio wynosi {last_pce:.2f}. Ulica pewna wzrostów ładuje Cally - uwaga na pułapkę (Contrarian Bearish Signal).")
+        except Exception as e:
+            pass 
+            
+        return anomalies
+    
 # --- KLASA GŁÓWNA ---
 class MarketProbabilityIndex:
     def __init__(self):
@@ -26155,6 +26311,273 @@ class MarketProbabilityIndex:
             print(f"[ERROR] Silnik Omega dla {ticker_symbol}: {e}")
             return fallback_dict
 
+    @st.fragment
+    def render_smart_money_cycle(self):
+        """
+        Radar Cyklu 10Y (ULTIMATE): Określa wizualnie momenty wejścia Smart Money, 
+        nastroje ulicy oraz ukrytą akumulację kapitału (Wieloryby) w 3 panelach.
+        Dodatkowo projektuje złotą linię przepływów bezpośrednio na wykres ceny.
+        """
+        import streamlit as st
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        import matplotlib.pyplot as plt
+
+        st.divider()
+        st.markdown("## 🐋 RADAR CYKLU (10 LAT): Smart Money, Ulica i Wieloryby")
+        st.info("Wykres Zintegrowany: Cienkie linie (czerwona/zielona) na górze to nastroje. **ZŁOTA LINIA** na wykresie głównym to masa wpompowanego kapitału (Wieloryby). Środkowy panel to psychologia, a najniższy to twarde przepływy (On-Balance Volume).")
+
+        # Zamykamy wszystko w bezpiecznym formularzu
+        with st.form(key="smart_money_cycle_form"):
+            
+            # Wstrzykujemy czarny styl przycisku z zielonym, neonowym hoverem dla urozmaicenia
+            st.markdown("""
+                <style>
+                div[data-testid="stFormSubmitButton"] > button {
+                    background-color: #000000 !important;
+                    color: #ffffff !important;
+                    border: 1px solid #333333 !important;
+                    transition: all 0.3s ease-in-out;
+                }
+                div[data-testid="stFormSubmitButton"] > button:hover {
+                    border: 1px solid #00ff55 !important;
+                    color: #00ff55 !important;
+                    box-shadow: 0 0 10px rgba(0, 255, 85, 0.3) !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                ticker = st.text_input("Wpisz Ticker (np. BTC-USD):", key="cycle_radar_ticker", value="").upper().strip()
+            
+            submit_btn = st.form_submit_button("ANALIZUJ ULICĘ I WIELORYBY 🚀")
+
+        # Kod wykona się TYLKO gdy ktoś kliknie przycisk
+        if submit_btn:
+            if not ticker:
+                st.warning("⚠️ Najpierw wpisz symbol (Ticker), który chcesz przeanalizować.")
+                return
+
+            with st.spinner(f"Kwantowa analiza korelacji i przepływów dla {ticker}..."):
+                try:
+                    # 1. Pobieranie danych
+                    df = yf.download(ticker, period="10y", progress=False)
+                    if df.empty:
+                        st.warning(f"Brak danych dla {ticker}.")
+                        return
+
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    df = df.dropna()
+
+                    # 2. OBLICZENIA KWANTOWE
+                    df['SMA200'] = df['Close'].rolling(window=200).mean()
+                    
+                    # A) Obliczanie nastrojów (smoothed RSI logic)
+                    delta = df['Close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    rs = gain / loss
+                    df['RSI'] = 100 - (100 / (1 + rs))
+                    
+                    df['Street_Sentiment'] = df['RSI'].rolling(window=30).mean()
+                    df['Smart_Money'] = 100 - df['Street_Sentiment']
+
+                    # B) Obliczanie Przepływów Kapitału (Wieloryby - OBV)
+                    obv = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
+                    df['OBV'] = obv
+                    df['OBV_SMA200'] = df['OBV'].rolling(window=200).mean()
+
+                    # C) Normalizacja OBV (0-100) dla Złotej Linii na głównym wykresie
+                    obv_min = df['OBV'].min()
+                    obv_max = df['OBV'].max()
+                    if obv_max != obv_min:
+                        df['OBV_Norm'] = ((df['OBV'] - obv_min) / (obv_max - obv_min)) * 100
+                    else:
+                        df['OBV_Norm'] = 50
+
+                    # 3. RYSOWANIE WYKRESU (3 PANELE)
+                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), gridspec_kw={'height_ratios': [3, 1.2, 1.5]}, sharex=True)
+                    fig.patch.set_facecolor('#0e1117')
+
+                    # --- GÓRNY PANEL (ax1): Cena + Projekcja Nastrojów + ZŁOTA LINIA ---
+                    ax1.plot(df.index, df['Close'], label='Cena', color='#ffffff', alpha=0.9, linewidth=1.5, zorder=3)
+                    ax1.plot(df.index, df['SMA200'], label='SMA 200', color='#ffaa00', alpha=0.5, linestyle='--', linewidth=1)
+                    
+                    # Nakładamy cieniutkie linie nastrojów i ZŁOTĄ LINIĘ OBV na górny wykres przy użyciu drugiej osi Y
+                    ax1_twin = ax1.twinx()
+                    ax1_twin.plot(df.index, df['Street_Sentiment'], color='#ff0033', linewidth=0.7, alpha=0.3, zorder=1)
+                    ax1_twin.plot(df.index, df['Smart_Money'], color='#00ff00', linewidth=0.7, alpha=0.3, zorder=1)
+                    # ZŁOTA LINIA (Masa Kapitału)
+                    ax1_twin.plot(df.index, df['OBV_Norm'], color='#ffd700', linewidth=1.5, alpha=0.7, zorder=2, label='Kapitał (Złota Linia)')
+                    
+                    ax1_twin.set_ylim(0, 100)
+                    ax1_twin.axis('off') # Ukrywamy skalę 0-100, żeby nie psuć widoku ceny
+                    
+                    ax1.set_yscale('log')
+                    ax1.set_facecolor('#0e1117')
+                    ax1.tick_params(colors='white')
+                    ax1.set_title(f"Analiza Przepływu Kapitału (10Y): {ticker}", color='white', fontsize=15)
+                    ax1.grid(color='#333333', linestyle=':', alpha=0.4)
+                    for spine in ax1.spines.values(): spine.set_color('#333333')
+
+                    # --- ŚRODKOWY PANEL (ax2): Główny Oscylator Emocji ---
+                    ax2.plot(df.index, df['Street_Sentiment'], label='😱 Ulica (Emocje)', color='#ff0033', linewidth=1.8)
+                    ax2.plot(df.index, df['Smart_Money'], label='🐋 Smart Money (Logika)', color='#00ff00', linewidth=1.8)
+                    
+                    ax2.fill_between(df.index, df['Street_Sentiment'], df['Smart_Money'], 
+                                     where=(df['Smart_Money'] > df['Street_Sentiment']), 
+                                     color='#00ff00', alpha=0.1)
+                    ax2.fill_between(df.index, df['Street_Sentiment'], df['Smart_Money'], 
+                                     where=(df['Street_Sentiment'] > df['Smart_Money']), 
+                                     color='#ff0033', alpha=0.1)
+
+                    ax2.set_facecolor('#0e1117')
+                    ax2.tick_params(colors='white')
+                    ax2.set_ylim(0, 100)
+                    ax2.legend(facecolor='#0e1117', edgecolor='#333333', labelcolor='white', loc='upper left', ncol=2, fontsize=9)
+                    ax2.grid(color='#333333', linestyle=':', alpha=0.3)
+                    for spine in ax2.spines.values(): spine.set_color('#333333')
+
+                    # --- DOLNY PANEL (ax3): Skarbiec Wielorybów (OBV) ---
+                    ax3.plot(df.index, df['OBV'], label='Skumulowany Wolumen (Basen Kapitału)', color='#00aaff', linewidth=2)
+                    ax3.plot(df.index, df['OBV_SMA200'], label='Trend Akumulacji (SMA 200)', color='#ff00aa', linestyle='--', linewidth=1.5)
+                    
+                    ax3.fill_between(df.index, df['OBV_SMA200'], df['OBV'], 
+                               where=(df['OBV'] >= df['OBV_SMA200']), color='#00aaff', alpha=0.25)
+                    ax3.fill_between(df.index, df['OBV_SMA200'], df['OBV'], 
+                                     where=(df['OBV'] < df['OBV_SMA200']), color='#ff0033', alpha=0.2)
+
+                    ax3.set_facecolor('#0e1117')
+                    ax3.tick_params(colors='white')
+                    
+                    # Formatowanie osi Y na miliony/miliardy
+                    def format_vol(x, pos):
+                        if abs(x) >= 1e9: return f'{x*1e-9:.1f}B'
+                        elif abs(x) >= 1e6: return f'{x*1e-6:.1f}M'
+                        return f'{x:.0f}'
+            
+                    ax3.yaxis.set_major_formatter(plt.FuncFormatter(format_vol))
+                    
+                    ax3.legend(facecolor='#0e1117', edgecolor='#333333', labelcolor='white', loc='upper left', ncol=2, fontsize=9)
+                    ax3.grid(color='#333333', linestyle=':', alpha=0.3)
+                    for spine in ax3.spines.values(): spine.set_color('#333333')
+
+                    plt.subplots_adjust(hspace=0.08)
+                    st.pyplot(fig)
+
+                    # --- METRYKI I WNIOSKI Z OBU SYSTEMÓW ---
+                    cur_smart = df['Smart_Money'].iloc[-1]
+                    cur_street = df['Street_Sentiment'].iloc[-1]
+                    
+                    price_trend_30d = (df['Close'].iloc[-1] - df['Close'].iloc[-30]) / df['Close'].iloc[-30]
+                    obv_trend_30d = (df['OBV'].iloc[-1] - df['OBV'].iloc[-30]) / abs(df['OBV'].iloc[-30]) if df['OBV'].iloc[-30] != 0 else 0
+                    
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Poziom Euforii (Ulica)", f"{cur_street:.1f}%")
+                    c2.metric("Kierunek Kapitału", "ROŚNIE 📈" if obv_trend_30d > 0 else "SPADA 📉")
+                    
+                    if df['OBV'].iloc[-1] > df['OBV_SMA200'].iloc[-1]:
+                        c3.metric("Faza Wielorybów", "AKUMULACJA 🐳")
+                    else:
+                        c3.metric("Faza Wielorybów", "DYSTRYBUCJA 🩸")
+
+                    st.markdown("### 🔍 Diagnoza Systemu:")
+                    
+                    # 1. Logika Ukrytej Dywergencji (Najważniejsza)
+                    if obv_trend_30d > 0 and price_trend_30d < 0:
+                        st.success("💎 **UKRYTA AKUMULACJA (GIGANTYCZNA ANOMALIA):** Cena spada, ale wskaźnik wpompowanego kapitału (najniższy panel i złota linia) rośnie! Ulica sprzedaje w panice, a wieloryby cicho absorbują podaż. Najsilniejszy byczy sygnał.")
+                    elif obv_trend_30d < 0 and price_trend_30d > 0:
+                        st.error("🚨 **FAŁSZYWE WYBICIE (UKRYTA DYSTRYBUCJA):** Cena rośnie na oparach, ale twardy kapitał tak naprawdę wypływa z aktywa. Instytucje wykorzystują euforię ulicy do upłynniania swoich portfeli. Uważaj na korektę.")
+                    # 2. Logika Nastrojów
+                    elif cur_street > 70:
+                        st.error("🚨 **ALERT:** Skrajna euforia ulicy. Na wykresie ceny widzisz czerwone linie u góry? To historycznie momenty przegrzania i formowania baniek.")
+                    elif cur_smart > 70:
+                        st.success("💎 **OKAZJA:** Smart Money dominuje nad strachem ulicy. Cienkie zielone linie wskazują na strefę głębokiej akumulacji na dnie.")
+                    else:
+                        st.info("⚖️ **STATUS NEUTRALNY:** Zarówno kapitał jak i emocje są w strefie równowagi. Zgodny przepływ środków wraz z ceną.")
+
+                    # --- NOWA SEKCJA: PROFIL SPÓŁKI / KRYPTO I WIADOMOŚCI ---
+                    st.divider()
+                    st.markdown(f"### 🏢 Profil Aktywa: {ticker}")
+                    
+                    ticker_data = yf.Ticker(ticker)
+                    info = ticker_data.info
+                    
+                    if info:
+                        # Pobieranie danych dla akcji lub krypto (fallback na quoteType)
+                        sector = info.get('sector') or info.get('category', 'Rynek Krypto / Brak danych')
+                        industry = info.get('industry') or info.get('quoteType', 'Kryptowaluta')
+                        
+                        # Krypto używa często 'description' zamiast 'longBusinessSummary'
+                        summary = info.get('longBusinessSummary') or info.get('description', 'Brak szczegółowego opisu dla tego aktywa.')
+                        
+                        col_sec, col_ind = st.columns(2)
+                        col_sec.metric("Sektor / Kategoria", sector)
+                        col_ind.metric("Branża / Typ", industry)
+                        
+                        with st.expander("📖 Zobacz pełny opis działalności (PL / EN)", expanded=False):
+                            try:
+                                from deep_translator import GoogleTranslator
+                                pl_summary = GoogleTranslator(source='auto', target='pl').translate(summary)
+                                st.markdown("**Tłumaczenie (PL):**")
+                                st.write(pl_summary)
+                                st.markdown("---")
+                                st.markdown("**Oryginał (EN):**")
+                                st.write(summary)
+                            except ImportError:
+                                st.warning("💡 Zainstaluj bibliotekę w terminalu: `pip install deep-translator` aby odblokować polskie tłumaczenie opisu.")
+                                st.write(summary)
+                            except Exception:
+                                st.write(summary)
+                    
+                    st.markdown("### 📰 Raport z Rynku (Streszczenia artykułów)")
+                    news = ticker_data.news
+                    
+                    if news:
+                        valid_news_count = 0
+                        for n in news:
+                            if valid_news_count >= 5:
+                                break
+                                
+                            # Obejście zmiennej struktury Yahoo Finance API (szukanie na 1 poziomie i wewnątrz 'content')
+                            title = n.get('title') or n.get('content', {}).get('title', '')
+                            link = n.get('link') or n.get('content', {}).get('clickThroughUrl', {}).get('url', '#')
+                            publisher = n.get('publisher') or n.get('content', {}).get('provider', {}).get('displayName', 'Nieznane źródło')
+                            article_summary = n.get('summary') or n.get('preview') or n.get('content', {}).get('summary', '')
+                            
+                            # Pomijamy błędne/puste struktury (nie wyświetlamy "Brak tytułu")
+                            if not title:
+                                continue
+                                
+                            valid_news_count += 1
+                            st.markdown(f"🔗 **[{title}]({link})** — *(źródło: {publisher})*")
+                            
+                            if article_summary:
+                                try:
+                                    from deep_translator import GoogleTranslator
+                                    pl_article_summary = GoogleTranslator(source='auto', target='pl').translate(article_summary)
+                                    st.write(f"> **PL:** {pl_article_summary}")
+                                    st.caption(f"> *EN: {article_summary}*")
+                                except ImportError:
+                                    st.write(f"> {article_summary}")
+                                except Exception:
+                                    st.write(f"> {article_summary}")
+                            else:
+                                st.caption("*Brak udostępnionego streszczenia z tego źródła.*")
+                            
+                            st.write("---")
+                            
+                        if valid_news_count == 0:
+                            st.info("API Yahoo nie udostępniło pełnych danych wiadomości w tym momencie. Spróbuj później.")
+                    else:
+                        st.info("Brak świeżych wiadomości w bazie dla tego aktywa. W przypadku małych tokenów krypto API rzadko dostarcza newsy.")
+
+                except Exception as e:
+                    st.error(f"Błąd radaru: {e}")
+
     @st.cache_data(ttl=3600)
     def get_btc_anomaly_data(_self, symbol="BTC-USD", period="5y", interval="1d", pattern_window=30):
         """
@@ -26407,6 +26830,1223 @@ class MarketProbabilityIndex:
         except Exception as e:
             print(f"Błąd Silnika Anomalii: {e}")
             return None, []
+
+    @st.fragment
+    def render_wyckoff_target_matrix(self):
+        """
+        Matryca Celów Wyckoffa + Elliott Wave (Target Calculator) - WERSJA SATURN 🪐:
+        Wylicza precyzyjne punkty wejścia, ewakuacji oraz ostateczny cel paraboliczny.
+        Zarzuca historyczną kotwicę na faktycznym dołku w przeszłości.
+        Zawiera: Wykres na samej górze w pliku PDF, Kanał Regresji, Kalkulator Ryzyka, 12 okresów ROI, 
+        FIX błędu Timestamp w eksporcie PDF oraz BEZLITOSNY skaner danych SEC/EDGAR (S-1, S-3, 8-K, DEF 14A, 10b5-1, Going Concern z datowaniem).
+        """
+        import streamlit as st
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        from datetime import timedelta
+        import base64
+        from fpdf import FPDF
+        import io
+        import tempfile
+        import os
+        import re
+        import time
+        import warnings
+        import requests
+
+        # Wyciszamy irytujące komunikaty BeautifulSoup o parserze XML w oknie CMD
+        warnings.filterwarnings('ignore', category=UserWarning, module='bs4')
+
+        st.divider()
+        st.markdown("## 🪐 MATRYCA WYCKOFFA & ELLIOTT: Lot do Saturna")
+        st.info("System lokalizuje historyczną KOTWICĘ (prawdziwe dno fali) oraz lokalne szczyty z cyklu (6M). Inteligentny Router na bieżąco sprawdza, w której fazie siatki Fibonacciego znajduje się cena i wymierza trajektorię na najbliższe cele.")
+
+        # Zamykamy w bezpiecznym formularzu TYLKO kontrolki (bez logiki i pobierania)
+        with st.form(key="wyckoff_target_form_saturn"):
+            st.markdown("""
+            <style>
+                div[data-testid="stFormSubmitButton"] > button {
+                    background-color: #000000 !important;
+                    color: #ffffff !important;
+                    border: 1px solid #333333 !important;
+                    transition: all 0.3s ease-in-out;
+                }
+                div[data-testid="stFormSubmitButton"] > button:hover {
+                    border: 1px solid #ff00ff !important;
+                    color: #ff00ff !important;
+                    box-shadow: 0 0 15px rgba(255, 0, 255, 0.4) !important;
+                }
+            </style>
+            """, unsafe_allow_html=True)
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                ticker = st.text_input("Zdefiniuj Cel (np. SGML, BTC-USD, NVDA):", key="wyckoff_ticker_saturn", value="").upper().strip()
+            with col2:
+                view_range = st.selectbox("Początkowy kadr wykresu (Oś Y dopasuje się perfekcyjnie do tej historii):", ["3 Miesiące", "6 Miesięcy", "1 Rok", "Wszystko (5 Lat)"], index=1)
+            
+            submit_btn = st.form_submit_button("ODPAL PROCEDURĘ SATURN 🚀")
+            
+        # Logika całkowicie wyrzucona poza blok st.form, co naprawia błąd st.download_button
+        if submit_btn:
+            if not ticker:
+                st.warning("⚠️ Wpisz symbol (Ticker), aby rozpocząć kalkulacje.")
+            else:
+                with st.spinner(f"Maszyna kwantowa namierza kotwicę, czyta ORYGINALNE dokumenty SEC (EDGAR) i buduje raport dla {ticker}... To może potrwać kilka sekund..."):
+                    try:
+                        df = yf.download(ticker, period="5y", progress=False)
+                        if df.empty:
+                            st.warning(f"⚠️ Brak danych dla symbolu: {ticker}. Upewnij się, że wpisujesz poprawny ticker z bazy Yahoo Finance (np. dla firm zagranicznych używaj odpowiednich końcówek, np. .SW, .DE, .L).")
+                        else:
+                            if isinstance(df.columns, pd.MultiIndex):
+                                df.columns = df.columns.get_level_values(0)
+                                
+                            df = df.dropna()
+                            current_price = float(df['Close'].iloc[-1])
+                            last_date = df.index[-1]
+                            
+                            # --- OBLICZENIA ---
+                            df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
+                            atr = df['TR'].tail(14).mean()
+                            
+                            delta = df['Close'].diff()
+                            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                            rs = gain / loss
+                            df['RSI'] = 100 - (100 / (1 + rs))
+                            
+                            df_6m = df.tail(126).copy()
+                            order = 5
+                            df_6m['Local_Max'] = df_6m['High'][(df_6m['High'] == df_6m['High'].rolling(window=order*2+1, center=True).max())]
+                            df_6m['Local_Min'] = df_6m['Low'][(df_6m['Low'] == df_6m['Low'].rolling(window=order*2+1, center=True).min())]
+                            
+                            peaks_df = df_6m[df_6m['Local_Max'].notna()]
+                            troughs_df = df_6m[df_6m['Local_Min'].notna()]
+                            
+                            recent_low = float(troughs_df['Local_Min'].min()) if not troughs_df.empty else float(df_6m['Low'].min())
+                            recent_low_date = troughs_df['Local_Min'].idxmin() if not troughs_df.empty else df_6m['Low'].idxmin()
+                            
+                            recent_high = float(peaks_df['Local_Max'].max()) if not peaks_df.empty else float(df_6m['High'].max())
+                            recent_high_date = peaks_df['Local_Max'].idxmax() if not peaks_df.empty else df_6m['High'].idxmax()
+                            
+                            wave_amplitude = recent_high - recent_low
+                            if wave_amplitude <= 0:
+                                wave_amplitude = atr * 5
+                                
+                            fibo_levels_6m = {
+                                "Kotwica Dno (0.0)": recent_low,
+                                "Wewnętrzne (0.382)": recent_low + (wave_amplitude * 0.382),
+                                "Wewnętrzne (0.618)": recent_low + (wave_amplitude * 0.618),
+                                "Szczyt Bazy (1.0)": recent_high,
+                                "Target Minor (1.272)": recent_low + (wave_amplitude * 1.272),
+                                "Złota Proporcja (1.618)": recent_low + (wave_amplitude * 1.618),
+                                "Podwójny Zasięg (2.0)": recent_low + (wave_amplitude * 2.0),
+                                "Rozszerzenie (2.618)": recent_low + (wave_amplitude * 2.618),
+                                "Super-Cykl (3.618)": recent_low + (wave_amplitude * 3.618),
+                                "Saturn (4.236)": recent_low + (wave_amplitude * 4.236)
+                            }
+                            
+                            # --- ROUTER ---
+                            fib_1000 = recent_high
+                            fib_1618 = float(recent_low + (wave_amplitude * 1.618))
+                            fib_2618 = float(recent_low + (wave_amplitude * 2.618))
+                            fib_3618 = float(recent_low + (wave_amplitude * 3.618))
+                            fib_4236 = float(recent_low + (wave_amplitude * 4.236))
+                            
+                            if current_price < fib_1618:
+                                dyn_target_1, dyn_target_name, dyn_entry_2 = fib_1618, "Cel Bieżący (1.618)", fib_1000
+                            elif current_price < fib_2618:
+                                dyn_target_1, dyn_target_name, dyn_entry_2 = fib_2618, "Cel Bieżący (2.618)", fib_1618
+                            elif current_price < fib_3618:
+                                dyn_target_1, dyn_target_name, dyn_entry_2 = fib_3618, "Cel Bieżący (3.618)", fib_2618
+                            else:
+                                dyn_target_1, dyn_target_name, dyn_entry_2 = fib_4236, "Cel Bieżący (Saturn 4.236)", fib_3618
+                                
+                            stop_loss = recent_low - (atr * 1.5)
+                            rr_ratio = (dyn_target_1 - current_price) / max(current_price - stop_loss, 0.001)
+                            target_3_saturn = fib_4236
+                            
+                            df_1y = df.tail(252)
+                            poc_price = current_price
+                            if len(df_1y) > 0 and df_1y['Close'].nunique() > 1:
+                                counts, bins = np.histogram(df_1y['Close'], bins=50, weights=df_1y['Volume'])
+                                max_bin_idx = np.argmax(counts)
+                                poc_price = float((bins[max_bin_idx] + bins[max_bin_idx+1]) / 2)
+                                
+                            # --- WYKRES ---
+                            future_dates = [(last_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(1, 91)]
+                            t_target1 = future_dates[24]
+                            t_entry2 = future_dates[49]
+                            t_saturn = future_dates[89]
+                            
+                            last_date_str = last_date.strftime('%Y-%m-%d')
+                            recent_low_date_str = recent_low_date.strftime('%Y-%m-%d')
+                            recent_high_date_str = recent_high_date.strftime('%Y-%m-%d')
+                            df_first_date_str = df.index[0].strftime('%Y-%m-%d')
+                            df_6m_first_date_str = df_6m.index[0].strftime('%Y-%m-%d')
+                            
+                            upper_cone = [current_price + (atr * 0.5 * np.sqrt(i)) for i in range(1, 91)]
+                            lower_cone = [max(current_price * 0.05, current_price - (atr * 0.5 * np.sqrt(i))) for i in range(1, 91)]
+                            
+                            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.8, 0.2], vertical_spacing=0.03)
+                            
+                            fig.add_trace(go.Scatter(
+                                x=future_dates + future_dates[::-1],
+                                y=upper_cone + lower_cone[::-1],
+                                fill='toself',
+                                fillcolor='rgba(255, 255, 255, 0.05)',
+                                line=dict(color='rgba(255,255,255,0)'),
+                                hoverinfo="skip",
+                                showlegend=True,
+                                name='Kwantowy Stożek Zmienności'
+                            ), row=1, col=1)
+                            
+                            for name, lvl in fibo_levels_6m.items():
+                                line_color = 'rgba(255, 215, 0, 0.8)' if "1.618" in name or "2.618" in name or "4.236" in name else 'rgba(255, 215, 0, 0.4)'
+                                dash_style = 'dashdot' if "1.618" in name or "2.618" in name or "4.236" in name else 'dot'
+                                fig.add_trace(go.Scatter(
+                                    x=[df_6m_first_date_str, future_dates[-1]], 
+                                    y=[lvl, lvl], 
+                                    mode='lines', 
+                                    name=name,
+                                    line=dict(color=line_color, dash=dash_style, width=1.5),
+                                    hoverinfo='skip'
+                                ), row=1, col=1)
+                                
+                            df_reg = df[(df.index >= recent_low_date) & (df.index <= last_date)].copy()
+                            if len(df_reg) > 2:
+                                x_num = np.arange(len(df_reg))
+                                coef = np.polyfit(x_num, df_reg['Close'], 1)
+                                poly = np.poly1d(coef)
+                                trend_line = poly(x_num)
+                                std_dev = np.std(df_reg['Close'] - trend_line)
+                                
+                                future_len = 30
+                                x_fut = np.arange(len(df_reg) + future_len)
+                                trend_fut = poly(x_fut)
+                                
+                                reg_dates = [d.strftime('%Y-%m-%d') for d in df_reg.index] + [(last_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(1, future_len+1)]
+                                
+                                fig.add_trace(go.Scatter(x=reg_dates, y=trend_fut + 2*std_dev, mode='lines', name='Górny Kanał Regresji', line=dict(color='rgba(0, 255, 255, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
+                                fig.add_trace(go.Scatter(x=reg_dates, y=trend_fut - 2*std_dev, mode='lines', fill='tonexty', fillcolor='rgba(0, 255, 255, 0.05)', name='Kanał Trendu', line=dict(color='rgba(0, 255, 255, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
+                                fig.add_trace(go.Scatter(x=reg_dates, y=trend_fut, mode='lines', name='Środek Regresji', line=dict(color='rgba(0, 255, 255, 0.6)', width=1, dash='dash'), hoverinfo='skip'), row=1, col=1)
+                                
+                            fig.add_trace(go.Scatter(x=df.index.strftime('%Y-%m-%d'), y=df['Close'], mode='lines', name='Cena Historyczna', line=dict(color='#ffffff', width=2)), row=1, col=1)
+                            
+                            fig.add_trace(go.Scatter(x=peaks_df.index.strftime('%Y-%m-%d'), y=peaks_df['Local_Max'], mode='markers', name='Szczyty Fali (Elliott)', marker=dict(symbol='triangle-down', size=10, color='#ff0033', line=dict(width=1, color='white'))), row=1, col=1)
+                            fig.add_trace(go.Scatter(x=troughs_df.index.strftime('%Y-%m-%d'), y=troughs_df['Local_Min'], mode='markers', name='Dołki Fali (Elliott)', marker=dict(symbol='triangle-up', size=10, color='#00ff55', line=dict(width=1, color='white'))), row=1, col=1)
+                            
+                            fig.add_trace(go.Scatter(x=[recent_low_date_str, recent_high_date_str], y=[recent_low, recent_high], mode='lines+markers', name='Amplituda Bazy', line=dict(color='rgba(255, 255, 255, 0.7)', dash='dot', width=2), marker=dict(size=8, color='rgba(255, 255, 255, 0.9)')), row=1, col=1)
+                            
+                            path_x = [last_date_str, t_target1, t_entry2, t_saturn]
+                            path_y = [current_price, dyn_target_1, dyn_entry_2, target_3_saturn]
+                            fig.add_trace(go.Scatter(x=path_x, y=path_y, mode='lines+markers', name='Trajektoria Lotu (Wektor)', line=dict(color='#00ffcc', dash='dash', width=3), marker=dict(size=[8, 12, 12, 16], color=['#ffffff', '#00aaff', '#ffaa00', '#ff00ff'], line=dict(width=2, color='#ffffff'))), row=1, col=1)
+                            
+                            fig.add_trace(go.Scatter(x=[df_first_date_str, future_dates[-1]], y=[poc_price, poc_price], mode='lines', name='POC (Grawitacja)', line=dict(color='#8a2be2', width=1, dash='dot')), row=1, col=1)
+                            fig.add_trace(go.Scatter(x=[df_6m_first_date_str, future_dates[-1]], y=[stop_loss, stop_loss], mode='lines', name='Stop-Loss', line=dict(color='#ff0000', width=2, dash='dot')), row=1, col=1)
+                            
+                            fig.add_trace(go.Scatter(x=df.index.strftime('%Y-%m-%d'), y=df['RSI'], mode='lines', name='RSI', line=dict(color='#00ffcc', width=1.5)), row=2, col=1)
+                            fig.add_hline(y=70, line_dash="dot", line_color="rgba(255,0,0,0.5)", row=2, col=1)
+                            fig.add_hline(y=30, line_dash="dot", line_color="rgba(0,255,85,0.5)", row=2, col=1)
+                            
+                            annotations = [
+                                dict(x=recent_low_date_str, y=recent_low, xref='x1', yref='y1', text=f"KOTWICA (0.0): {recent_low:.2f}$", showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="rgba(255,255,255,0.7)", font=dict(color="rgba(255,255,255,0.9)", size=11, family="Courier New"), ax=0, ay=40),
+                                dict(x=recent_high_date_str, y=recent_high, xref='x1', yref='y1', text=f"SZCZYT BAZY (1.0): {recent_high:.2f}$", showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="rgba(255,255,255,0.7)", font=dict(color="rgba(255,255,255,0.9)", size=11, family="Courier New"), ax=0, ay=-40),
+                                dict(x=t_target1, y=dyn_target_1, xref='x1', yref='y1', text=dyn_target_name, showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="#00aaff", font=dict(color="#00aaff", size=12, family="Courier New"), ax=0, ay=-40),
+                                dict(x=t_entry2, y=dyn_entry_2, xref='x1', yref='y1', text=f"RE-ENTRY: {dyn_entry_2:.2f}$", showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="#ffaa00", font=dict(color="#ffaa00", size=12, family="Courier New"), ax=0, ay=40),
+                                dict(x=t_saturn, y=target_3_saturn, xref='x1', yref='y1', text=f"🪐 SATURN: {target_3_saturn:.2f}$", showarrow=True, arrowhead=3, arrowsize=1.5, arrowwidth=3, arrowcolor="#ff00ff", bgcolor="#ff00ff", font=dict(color="#ffffff", size=14, family="Courier New"), ax=0, ay=-50),
+                                dict(x=last_date_str, y=stop_loss, xref='x1', yref='y1', text=f"STOP-LOSS: {stop_loss:.2f}$", showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=2, arrowcolor="#ff0000", font=dict(color="#ff0000", size=11, family="Courier New"), ax=0, ay=30)
+                            ]
+                            
+                            if view_range == "3 Miesiące": days_back = 90
+                            elif view_range == "6 Miesięcy": days_back = 180
+                            elif view_range == "1 Rok": days_back = 365
+                            else: days_back = len(df) * 2
+                            
+                            start_date_view = last_date - timedelta(days=days_back)
+                            start_date_view = max(start_date_view, df.index[0])
+                            start_date_view_str = start_date_view.strftime('%Y-%m-%d')
+                            
+                            y_min = float(df[df.index >= start_date_view]['Low'].min() * 0.90)
+                            y_max = float(df[df.index >= start_date_view]['High'].max() * 1.10)
+                            y_min = min(y_min, recent_low * 0.95, dyn_entry_2 * 0.95, stop_loss * 0.95)
+                            y_max = max(y_max, dyn_target_1 * 1.05)
+                            
+                            fig.update_layout(
+                                title=dict(
+                                    text=f"TRAJEKTORIA LOTU: {ticker}<br><span style='font-size:14px; color:#ffffff'>Obecna cena: {current_price:.2f}$</span>",
+                                    x=0.02, y=0.98, xanchor='left', yanchor='top',
+                                    font=dict(size=18, color="#00ffcc", family="Courier New")
+                                ),
+                                template='plotly_dark',
+                                plot_bgcolor='#0e1117',
+                                paper_bgcolor='#0e1117',
+                                hovermode='x unified',
+                                annotations=annotations,
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=12, color="#ffffff"), bgcolor="rgba(0,0,0,0)"),
+                                margin=dict(l=20, r=20, t=130, b=20),
+                                height=950,
+                                dragmode="zoom"
+                            )
+                            
+                            fig.update_xaxes(showgrid=True, gridcolor='#333333', range=[start_date_view_str, future_dates[-1]], type="date", row=1, col=1)
+                            fig.update_xaxes(showgrid=True, gridcolor='#333333', range=[start_date_view_str, future_dates[-1]], type="date", title="Przestrzeń Czasowa", row=2, col=1)
+                            fig.update_yaxes(showgrid=True, gridcolor='#333333', range=[y_min, y_max], fixedrange=False, title="Cena (USD)", row=1, col=1)
+                            fig.update_yaxes(showgrid=True, gridcolor='#333333', range=[0, 100], fixedrange=True, title="RSI", row=2, col=1)
+                            
+                            st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+                            
+                            # --- DYNAMIKA ROI (12 elementów) ---
+                            st.markdown("### 📊 DYNAMIKA ZMIAN CENY (ROI)")
+                            timeframes = [
+                                ("1 Dzień", 1), ("5 Dni", 5), ("14 Dni", 14), ("21 Dni", 21),
+                                ("1 Miesiąc", 30), ("2 Miesiące", 60), ("3 Miesiące", 90), ("4 Miesiące", 120),
+                                ("5 Miesięcy", 150), ("1 Rok", 365), ("2 Lata", 730), ("3 Lata", 1095)
+                            ]
+                            
+                            row1 = st.columns(6)
+                            row2 = st.columns(6)
+                            all_cols = row1 + row2
+                            roi_stats = {}
+                            
+                            for col, (lab, d) in zip(all_cols, timeframes):
+                                target_date = last_date - timedelta(days=d)
+                                past_df = df[df.index <= target_date]
+                                if not past_df.empty:
+                                    past_price = float(past_df['Close'].iloc[-1])
+                                    val_roi = ((current_price / past_price) - 1) * 100
+                                    roi_stats[lab] = f"{val_roi:+.2f}%"
+                                    col.metric(lab, f"{current_price:.2f}$", f"{val_roi:+.2f}%")
+                                else:
+                                    roi_stats[lab] = "Brak danych"
+                                    col.metric(lab, "Brak danych", None)
+                                    
+                            st.divider()
+                            
+                            # --- PRZED-OBLICZENIA PIWNICY EDGAR DLA UI I PDF ---
+                            edgar_wieloryby_txt = ""
+                            edgar_wieloryby_stan = "info"
+                            edgar_insider_txt = ""
+                            edgar_insider_stan = "info"
+                            edgar_anatomia_txt = ""
+                            edgar_anatomia_stan = "info"
+                            edgar_short_txt = ""
+                            edgar_short_stan = "info"
+                            edgar_error = None
+                            
+                            try:
+                                t_obj = yf.Ticker(ticker)
+                                t_info = t_obj.info
+                                
+                                # GLOBAL RADAR: Ekstrakcja CIK i weryfikacja jurysdykcji bez nadpisywania tickera bazowego
+                                cik = t_info.get('cik')
+                                country = t_info.get('country', 'United States')
+                                exchange = t_info.get('exchange', '')
+                                
+                                # Detekcja specyfiki spółek - firmy poza USA
+                                is_foreign_exchange = ("." in ticker) or (country != 'United States')
+                                
+                                inst_own = t_info.get('heldPercentInstitutions', 0)
+                                insider_own = t_info.get('heldPercentInsiders', 0)
+                                cash = t_info.get('totalCash', 0)
+                                fcf = t_info.get('freeCashflow', 0)
+                                short_ratio = t_info.get('shortPercentOfFloat', 0)
+                                
+                                # A. Kalkulacja FLOW dla Insiderów (6M)
+                                insider_buys_6m = 0
+                                insider_sells_unplanned = 0
+                                insider_sells_10b51 = 0
+                                insider_flow_info = ""
+                                
+                                try:
+                                    insider_trans = t_obj.insider_transactions
+                                    if insider_trans is not None and not insider_trans.empty:
+                                        for _, row in insider_trans.head(100).iterrows():
+                                            row_str = str(row).lower()
+                                            shares = 0
+                                            if 'shares' in insider_trans.columns:
+                                                val = row['Shares']
+                                                if pd.notna(val) and isinstance(val, (int, float)):
+                                                    shares = int(val)
+                                                    
+                                            if 'purchase' in row_str or 'buy' in row_str or 'p - purchase' in row_str:
+                                                insider_buys_6m += shares
+                                            elif 'sale' in row_str or 'sell' in row_str or 's - sale' in row_str:
+                                                if '10b5-1' in row_str or 'automatic' in row_str or 'tax' in row_str:
+                                                    insider_sells_10b51 += shares
+                                                else:
+                                                    insider_sells_unplanned += shares
+                                                    
+                                        total_sells = insider_sells_unplanned + insider_sells_10b51
+                                        net_insider = insider_buys_6m - total_sells
+                                        
+                                        if net_insider > 0:
+                                            insider_flow_info = f" 🔥 DYNAMIKA 6M: Zarząd ładuje torby. Kupili {insider_buys_6m:,.0f} akcji. Sprzedali {total_sells:,.0f} (z czego {insider_sells_10b51:,.0f} to auto-podatki 10b5-1). Ustawiają się pod wzrosty."
+                                        elif insider_sells_unplanned > (insider_buys_6m * 3):
+                                            insider_flow_info = f" 🧊 DYNAMIKA 6M (PANIKA): Ewakuacja! Zarząd ręcznie zrzucił w rynek {insider_sells_unplanned:,.0f} akcji (nie licząc {insider_sells_10b51:,.0f} z automatów 10b5-1), a kupili tylko {insider_buys_6m:,.0f}. Uciekają."
+                                        elif total_sells > 0 and insider_sells_unplanned == 0:
+                                            insider_flow_info = f" 🛡️ DYNAMIKA 6M (BEZPIECZNIE): Cała sprzedaż zarządu ({total_sells:,.0f} akcji) poszła z planu automatycznego 10b5-1. To spieniężanie opcji na podatki, a nie ucieczka przed katastrofą."
+                                        elif insider_buys_6m == 0 and total_sells == 0:
+                                            insider_flow_info = " 😴 DYNAMIKA 6M: Form 4 jest pusty. Zarząd od pół roku zamrożony w bezruchu."
+                                        else:
+                                            insider_flow_info = f" ⚖️ DYNAMIKA 6M: Mieszane sygnały. Kupiono {insider_buys_6m:,.0f}, sprzedano ręcznie {insider_sells_unplanned:,.0f} i automatycznie {insider_sells_10b51:,.0f}."
+                                except Exception:
+                                    insider_flow_info = " (Brak szczegółowych danych o transakcjach Form 4)."
+                                    
+                                # B. Kalkulacja Wielorybów
+                                wieloryby_flow_info = ""
+                                try:
+                                    inst_holders = t_obj.institutional_holders
+                                    if inst_holders is not None and not inst_holders.empty and 'Shares' in inst_holders.columns:
+                                        total_inst_shares = inst_holders['Shares'].sum()
+                                        wieloryby_flow_info = f" Skan 12M: Najwięksi gracze z listy 13F (Top Fundusze) trzymają fizycznie około {total_inst_shares:,.0f} akcji, potwierdzając horyzont roczny."
+                                except Exception:
+                                    pass
+                                    
+                                # C. Instytucje i Anatomia
+                                if inst_own is not None and inst_own > 0.5:
+                                    edgar_wieloryby_txt = f"Grube ryby mają zapakowane torby. Instytucje trzymają aż **{inst_own*100:.1f}%** akcji.{wieloryby_flow_info}"
+                                    edgar_wieloryby_stan = "success"
+                                elif inst_own is not None and inst_own > 0:
+                                    edgar_wieloryby_txt = f"Instytucje mają **{inst_own*100:.1f}%**.{wieloryby_flow_info}"
+                                    edgar_wieloryby_stan = "warning"
+                                else:
+                                    edgar_wieloryby_txt = "Brak instytucjonalnego wsparcia."
+                                    edgar_wieloryby_stan = "error"
+                                    
+                                if insider_own is not None and insider_own > 0.1:
+                                    edgar_insider_txt = f"Skin in the game: Zarząd trzyma **{insider_own*100:.1f}%** akcji.{insider_flow_info}"
+                                    edgar_insider_stan = "success"
+                                elif insider_own is not None and insider_own > 0:
+                                    edgar_insider_txt = f"Zarząd posiada **{insider_own*100:.1f}%** akcji.{insider_flow_info}"
+                                    edgar_insider_stan = "warning"
+                                else:
+                                    edgar_insider_txt = f"Brak znacznych pozycji zarządu.{insider_flow_info}"
+                                    edgar_insider_stan = "info"
+                                    
+                                if cash is not None and fcf is not None:
+                                    if cash > 0 and fcf < 0:
+                                        edgar_anatomia_txt = f"ALARM GOTÓWKOWY! Gotówka: **${cash:,.0f}**, ujemny FCF: **${fcf:,.0f}**. Ryzyko drukowania nowych akcji w celu pozyskania kapitału."
+                                        edgar_anatomia_stan = "error"
+                                    elif cash > 0 and fcf > 0:
+                                        edgar_anatomia_txt = f"Firma generuje zysk. Gotówka: **${cash:,.0f}**, dodatni FCF: **${fcf:,.0f}**."
+                                        edgar_anatomia_stan = "success"
+                                    else:
+                                        edgar_anatomia_txt = "Brak wystarczającej gotówki lub przepływy na zerze. Duże ryzyko."
+                                        edgar_anatomia_stan = "info"
+                                else:
+                                    edgar_anatomia_txt = "Brak pełnych danych finansowych w API Yahoo."
+                                    edgar_anatomia_stan = "info"
+                                    
+                                if short_ratio is not None and short_ratio > 0.1:
+                                    edgar_short_txt = f"Uważaj na pożar! **{short_ratio*100:.1f}%** dostępnych akcji jest sprzedanych na krótko (Short Squeeze Risk)."
+                                    edgar_short_stan = "warning"
+                                    
+                                # =========================================================================
+                                # D. WŁAŚCIWY DEEP SCANNER EDGAR (NAPRAWA iXBRL + DATOWANIE + DEBUG + GLOBALNY RADAR)
+                                # =========================================================================
+                                sec_fires = []
+                                s3_years = set()
+                                rev_split_years = set()
+                                has_foreign_forms = False
+                                
+                                edgar_s3_txt = "✅ Czysto. Skaner SEC nie wykrył bezpośredniego zagrożenia formularzem S-1, S-3 (aktywną drukarką akcji) ani ofertą At-The-Market."
+                                edgar_s3_stan = "success"
+                                edgar_14a_txt = "✅ Czysto. Skaner DEF 14A nie widzi planów Reverse Stock Split w głównych dokumentach."
+                                edgar_14a_stan = "success"
+                                
+                                try:
+                                    import requests
+                                    from bs4 import BeautifulSoup
+                                    import re
+                                    import time
+                                    
+                                    sec_headers = {'User-Agent': 'LamboMatrixApp pawel.matrix@example.com', 'Accept-Encoding': 'gzip, deflate'}
+                                    
+                                    # CIK RESOLVER: Szukamy alternatywnego sposobu na identyfikację firmy w SEC, jeśli podano np. LNZA
+                                    # Szukamy po nazwie, jeśli CIK jest puste
+                                    search_key = ticker
+                                    if not cik:
+                                        try:
+                                            # Próba mapowania na wypadek wpisania potocznej nazwy (nie zmieniamy tickera głównego!)
+                                            mapping = {"LNZA": "LZAGY", "LONZA": "LZAGY"}
+                                            mapped_ticker = mapping.get(ticker, ticker)
+                                            
+                                            sec_tickers_url = "https://www.sec.gov/files/company_tickers.json"
+                                            sec_tickers_resp = requests.get(sec_tickers_url, headers=sec_headers, timeout=5)
+                                            if sec_tickers_resp.status_code == 200:
+                                                for k, v in sec_tickers_resp.json().items():
+                                                    if v['ticker'].upper() == mapped_ticker:
+                                                        cik = str(v['cik_str']).zfill(10)
+                                                        search_key = cik
+                                                        break
+                                        except:
+                                            pass
+                                    else:
+                                        search_key = str(cik).zfill(10)
+                                    
+                                    sec_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={search_key}&type=&dateb=&owner=exclude&count=100&output=atom"
+                                    sec_resp = requests.get(sec_url, headers=sec_headers, timeout=10)
+                                    
+                                    if sec_resp.status_code == 200:
+                                        sec_soup = BeautifulSoup(sec_resp.content, 'html.parser')
+                                        entries = sec_soup.find_all('entry')
+                                        
+                                        # DETEKCJA ZWOLNIENIA Z RAPORTOWANIA DLA ZAGRANICZNYCH / OTC
+                                        if len(entries) == 0:
+                                            if is_foreign_exchange:
+                                                edgar_8k_txt = f"🌐 [RYNEK ZAGRANICZNY] Firma z regionu: {country}. Zwolniona z obowiązku składania raportów w amerykańskim SEC. Raporty są publikowane wyłącznie na lokalnej giełdzie firmy. Brak dostępu do dokumentów HTM."
+                                                edgar_8k_stan = "info"
+                                                edgar_s3_txt = "🌐 [RYNEK ZAGRANICZNY] Drukarka Akcji (S-1/S-3): Brak zastosowania."
+                                                edgar_s3_stan = "info"
+                                                edgar_14a_txt = "🌐 [RYNEK ZAGRANICZNY] Radar Pułapek (DEF 14A): Brak zastosowania dla spółek zwolnionych z EDGAR."
+                                                edgar_14a_stan = "info"
+                                            else:
+                                                sec_fires.append("Odrzucono wyszukiwanie: Brak dokumentów powiązanych z tym symbolem w bazie SEC.")
+                                        else:
+                                            # Tradycyjne skanowanie wpisów SEC
+                                            for entry in entries:
+                                                title = entry.title.text.lower() if entry.title else ""
+                                                summary = entry.summary.text.lower() if entry.summary else ""
+                                                link_tag = entry.find('link')
+                                                link = link_tag['href'] if link_tag else ""
+                                                
+                                                updated_tag = entry.find('updated')
+                                                doc_year = updated_tag.text.strip()[:4] if updated_tag and updated_tag.text else "Brak Roku"
+                                                
+                                                if any(x in title for x in ['20-f', '40-f', '6-k', 'f-1', 'f-3']):
+                                                    has_foreign_forms = True
+                                                
+                                                if any(x in title for x in ['s-1', 's-3', 'f-1', 'f-3', '424b']) or 'shelf' in summary or 'at the market' in summary:
+                                                    s3_years.add(doc_year)
+                                                    
+                                                if 'def 14a' in title or 'pre 14a' in title:
+                                                    if 'reverse' in summary or 'split' in summary:
+                                                        rev_split_years.add(doc_year)
+                                                        
+                                                if '8-k' in title or '6-k' in title:
+                                                    if 'item 4.01' in summary: sec_fires.append(f"ZMIANA AUDYTORA (ITEM 4.01) [{doc_year}]")
+                                                    if 'item 4.02' in summary: sec_fires.append(f"BRAK WIARYGODNOŚCI KSIĄG (ITEM 4.02) [{doc_year}]")
+                                                    if 'item 1.03' in summary: sec_fires.append(f"BANKRUCTWO (ITEM 1.03) [{doc_year}]")
+                                                    
+                                                target_docs = ['10-k', '10-q', '8-k', '20-f', '40-f', '6-k', 'def 14a', 'pre 14a', 's-1', 's-3', 'f-1', 'f-3', '424b']
+                                                
+                                                if link and any(x in title for x in target_docs):
+                                                    try:
+                                                        time.sleep(0.15)
+                                                        idx_resp = requests.get(link, headers=sec_headers, timeout=10)
+                                                        idx_soup = BeautifulSoup(idx_resp.content, 'html.parser')
+                                                        
+                                                        doc_table = idx_soup.find('table', class_='tableFile')
+                                                        if doc_table:
+                                                            rows = doc_table.find_all('tr')
+                                                            if len(rows) > 1:
+                                                                a_tag = rows[1].find('a')
+                                                                if a_tag and 'href' in a_tag.attrs:
+                                                                    href = a_tag['href']
+                                                                    href = href.replace('/ix?doc=', '').replace('/ixviewer/ix.html?doc=', '')
+                                                                    
+                                                                    if not href.startswith('http'):
+                                                                        doc_url = "https://www.sec.gov" + href
+                                                                    else:
+                                                                        doc_url = href
+                                                                        
+                                                                    time.sleep(0.15)
+                                                                    doc_resp = requests.get(doc_url, headers=sec_headers, timeout=10, stream=True)
+                                                                    raw_content = b""
+                                                                    
+                                                                    for chunk in doc_resp.iter_content(chunk_size=1024 * 1024):
+                                                                        raw_content += chunk
+                                                                        if len(raw_content) > 25 * 1024 * 1024: 
+                                                                            break
+                                                                            
+                                                                    doc_text = raw_content.decode('utf-8', errors='ignore')
+                                                                    
+                                                                    clean_text = re.sub(r'<[^>]+>', ' ', doc_text)
+                                                                    clean_text = re.sub(r'&\w+;', ' ', clean_text)
+                                                                    clean_text = re.sub(r'\s+', ' ', clean_text).lower()
+                                                                    
+                                                                    # --- DEBUG ZAPIS NA DYSK ---
+                                                                    #if any(x in title for x in ['10-k', '20-f', '40-f', 's-1', 's-3', 'f-1', 'f-3', '424b']):
+                                                                        #safe_title = re.sub(r'[^a-zA-Z0-9]', '_', title)
+                                                                        #debug_path = os.path.join(os.getcwd(), f"DEBUG_EDGAR_{ticker}_{doc_year}_{safe_title}.txt")
+                                                                        #try:
+                                                                            #with open(debug_path, "w", encoding="utf-8") as f_debug:
+                                                                                #f_debug.write(clean_text)
+                                                                        #except Exception:
+                                                                            #pass
+                                                                    
+                                                                    if 'going concern' in clean_text: sec_fires.append(f"GOING CONCERN (Zagrożenie Przetrwania) [{doc_year}]")
+                                                                    if 'material weakness' in clean_text: sec_fires.append(f"MATERIAL WEAKNESS (Dziury w Audycie) [{doc_year}]")
+                                                                    if 'reverse stock split' in clean_text or 'reverse split' in clean_text or 'consolidation of shares' in clean_text: 
+                                                                        rev_split_years.add(doc_year)
+                                                                    if 'at the market offering' in clean_text or 'shelf registration' in clean_text: 
+                                                                        s3_years.add(doc_year)
+                                                                        
+                                                    except Exception as inner_e:
+                                                        continue
+                                            
+                                            if s3_years:
+                                                years_str = ", ".join(sorted(list(s3_years)))
+                                                edgar_s3_txt = f"🚨 ZNALEZIONO DRUKARKĘ AKCJI [{years_str}]: System SEC wykrył aktywny formularz rejestracji 'Shelf Registration' lub mechanizm zrzutu 'At The Market'. Firma przygotowuje lub prowadzi zrzut akcji w rynek."
+                                                edgar_s3_stan = "error"
+                                            
+                                            if rev_split_years:
+                                                years_str = ", ".join(sorted(list(rev_split_years)))
+                                                edgar_14a_txt = f"🕸️ PUŁAPKA DEF 14A/8-K (REVERSE SPLIT) [{years_str}]: Wykryto plany lub procedowanie Reverse Stock Split z surowych dokumentów SEC. Sztuczna manipulacja ceną w celu utrzymania notowań."
+                                                edgar_14a_stan = "error"
+                                                
+                                        # Przetworzenie błędów i flag po stronie SEC
+                                        if len(entries) > 0:
+                                            sec_fires = list(set(sec_fires))
+                                            doc_names = "10-K/8-K" if not has_foreign_forms else "20-F/40-F/6-K (Emitent Zagraniczny)"
+                                            
+                                            if sec_fires:
+                                                edgar_8k_txt = f"🔥 ALARM FUNDAMENTALNY (BEZPOŚREDNIO Z BAZY SEC): Skaner pobrał pliki HTM ({doc_names}). Znalazł krytyczne flagi: {', '.join(sec_fires)}. Ekstremalne ryzyko!"
+                                                edgar_8k_stan = "error"
+                                            else:
+                                                edgar_8k_txt = f"✅ Czysto. Głęboki skan czystych plików HTM z EDGAR nie wykrył not 'Going Concern' ani bankructwa. Przeskanowano pod kątem: {doc_names}."
+                                                edgar_8k_stan = "success"
+
+                                    else:
+                                        sec_fires.append(f"ODRZUCONO POŁĄCZENIE SEC (Kod {sec_resp.status_code})")
+                                        
+                                except Exception as e:
+                                    sec_fires.append(f"BŁĄD POŁĄCZENIA SEC: {str(e)[:40]}")
+                                    if not is_foreign_exchange:
+                                        edgar_8k_txt = f"⚠️ Wystąpił błąd podczas analizy SEC: {e}"
+                                        edgar_8k_stan = "error"
+                                        
+                            except Exception as edgar_err:
+                                edgar_error = f"Nie udało się połączyć z API Yahoo/SEC: {edgar_err}"
+                                
+                            # --- SANITYZATOR POLSKICH ZNAKÓW I EMOJI DLA PDF ---
+                            def sanitize(text):
+                                if not isinstance(text, str): return ""
+                                replacements = {'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z', 'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z'}
+                                for pl, eng in replacements.items(): text = text.replace(pl, eng)
+                                return text.encode('latin-1', 'ignore').decode('latin-1')
+                                
+                            # --- EKSPORT PDF ---
+                            fig.update_xaxes(range=[start_date_view_str, future_dates[-1]], row=1, col=1)
+                            fig.update_xaxes(range=[start_date_view_str, future_dates[-1]], row=2, col=1)
+                            
+                            class PDF(FPDF):
+                                def header(self):
+                                    self.set_font('Arial', 'B', 16)
+                                    self.set_text_color(0, 150, 255)
+                                    self.cell(0, 10, sanitize(f'RAPORT TAKTYCZNY SATURN: {ticker}'), 0, 1, 'L')
+                                    self.set_font('Arial', '', 10)
+                                    self.set_text_color(100, 100, 100)
+                                    self.cell(0, 5, sanitize(f'Wygenerowano: {last_date.strftime("%Y-%m-%d")} | Lambo Matrix Alpha'), 0, 1, 'L')
+                                    self.ln(5)
+                                    
+                            pdf = PDF()
+                            pdf.add_page()
+                            
+                            try:
+                                img_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+                                    tmp_file.write(img_bytes)
+                                    tmp_path = tmp_file.name
+                                pdf.image(tmp_path, x=10, y=pdf.get_y() + 2, w=190)
+                                pdf.set_y(pdf.get_y() + 132)
+                                os.remove(tmp_path)
+                            except Exception as img_err:
+                                pdf.cell(0, 10, sanitize(f"(Blad generowania obrazu wykresu: {img_err})"), 0, 1)
+                                pdf.ln(5)
+                                
+                            pdf.set_font('Arial', 'B', 12)
+                            pdf.set_text_color(0, 0, 0)
+                            pdf.cell(0, 10, sanitize("1. PARAMETRY WEJSCIOWE I GRAWITACJA"), 0, 1)
+                            pdf.set_font('Arial', '', 10)
+                            pdf.cell(0, 7, sanitize(f"Obecna Cena: {current_price:.2f} USD"), 0, 1)
+                            pdf.cell(0, 7, sanitize(f"Kotwica Dno (0.0): {recent_low:.2f} USD"), 0, 1)
+                            pdf.cell(0, 7, sanitize(f"Szczyt Bazy (1.0): {recent_high:.2f} USD"), 0, 1)
+                            pdf.cell(0, 7, sanitize(f"Zalecany Stop-Loss: {stop_loss:.2f} USD"), 0, 1)
+                            pdf.ln(5)
+                            
+                            pdf.set_font('Arial', 'B', 12)
+                            pdf.cell(0, 10, sanitize("2. CELE PROJEKCYJNE (TARGETY)"), 0, 1)
+                            pdf.set_font('Arial', '', 10)
+                            pdf.cell(0, 7, sanitize(f"{dyn_target_name}: {dyn_target_1:.2f} USD (+{((dyn_target_1/current_price)-1)*100:.1f}%)"), 0, 1)
+                            pdf.cell(0, 7, sanitize(f"Cel Saturn (4.236): {fib_4236:.2f} USD (+{((fib_4236/current_price)-1)*100:.1f}%)"), 0, 1)
+                            pdf.cell(0, 7, sanitize(f"Wskaznik Risk/Reward: {rr_ratio:.2f}"), 0, 1)
+                            pdf.ln(5)
+                            
+                            pdf.set_font('Arial', 'B', 12)
+                            pdf.cell(0, 10, sanitize("3. DYNAMIKA ZMIAN (ROI)"), 0, 1)
+                            pdf.set_font('Arial', '', 10)
+                            roi_text = " | ".join([f"{k}: {v}" for k, v in list(roi_stats.items())[:6]]) + "\n" + " | ".join([f"{k}: {v}" for k, v in list(roi_stats.items())[6:]])
+                            pdf.multi_cell(0, 7, sanitize(roi_text))
+                            pdf.ln(5)
+                            
+                            # Wstrzykiwanie danych EDGAR do PDF na kolejnej stronie
+                            pdf.add_page()
+                            pdf.set_font('Arial', 'B', 14)
+                            pdf.set_text_color(0, 0, 0)
+                            pdf.cell(0, 10, sanitize("4. PIWNICA EDGAR (SEC) - RZECZYWISTY SKAN ZAGROZEN"), 0, 1)
+                            
+                            if edgar_error:
+                                pdf.set_font('Arial', '', 10)
+                                pdf.multi_cell(0, 7, sanitize(edgar_error))
+                            else:
+                                pdf.set_font('Arial', 'B', 11)
+                                pdf.cell(0, 8, sanitize("A. Sledzenie Wielorybow (13F / Horyzont 12M)"), 0, 1)
+                                pdf.set_font('Arial', '', 10)
+                                pdf.multi_cell(0, 7, sanitize(edgar_wieloryby_txt.replace("**", "")))
+                                pdf.ln(3)
+                                
+                                pdf.set_font('Arial', 'B', 11)
+                                pdf.cell(0, 8, sanitize("B. Sledzenie Insiderow (Form 4 / Horyzont 6M)"), 0, 1)
+                                pdf.set_font('Arial', '', 10)
+                                pdf.multi_cell(0, 7, sanitize(edgar_insider_txt.replace("**", "")))
+                                pdf.ln(3)
+                                
+                                pdf.set_font('Arial', 'B', 11)
+                                pdf.cell(0, 8, sanitize("C. Anatomia Finansowa (Raporty Główne)"), 0, 1)
+                                pdf.set_font('Arial', '', 10)
+                                pdf.multi_cell(0, 7, sanitize(edgar_anatomia_txt.replace("**", "")))
+                                pdf.ln(3)
+                                
+                                pdf.set_font('Arial', 'B', 11)
+                                pdf.cell(0, 8, sanitize("D. Fizyczny Skaner Drukarki Akcji (S-1/S-3/F-3)"), 0, 1)
+                                pdf.set_font('Arial', '', 10)
+                                pdf.multi_cell(0, 7, sanitize(edgar_s3_txt.replace("**", "")))
+                                pdf.ln(3)
+                                
+                                pdf.set_font('Arial', 'B', 11)
+                                pdf.cell(0, 8, sanitize("E. Radar Going Concern i Pozarow (Skan plikow z ominieciem iXBRL)"), 0, 1)
+                                pdf.set_font('Arial', '', 10)
+                                if "edgar_8k_txt" in locals():
+                                    pdf.multi_cell(0, 7, sanitize(edgar_8k_txt.replace("**", "")))
+                                pdf.ln(3)
+                                
+                                pdf.set_font('Arial', 'B', 11)
+                                pdf.cell(0, 8, sanitize("F. Radar Ukrytych Pulapek (DEF 14A)"), 0, 1)
+                                pdf.set_font('Arial', '', 10)
+                                pdf.multi_cell(0, 7, sanitize(edgar_14a_txt.replace("**", "")))
+                                pdf.ln(3)
+                                
+                                if edgar_short_txt:
+                                    pdf.set_font('Arial', 'B', 11)
+                                    pdf.cell(0, 8, sanitize("G. Poziom Zaszortowania (Short Squeeze Risk)"), 0, 1)
+                                    pdf.set_font('Arial', '', 10)
+                                    pdf.multi_cell(0, 7, sanitize(edgar_short_txt.replace("**", "")))
+                                    pdf.ln(3)
+                                    
+                            pdf_output = pdf.output(dest='S').encode('latin-1', 'ignore')
+                            
+                            st.download_button(
+                                label="🚀 POBIERZ PEŁNY RAPORT PDF (Z WYKRESEM I DANYMI SEC NA GÓRZE)",
+                                data=pdf_output,
+                                file_name=f"SATURN_REPORT_{ticker}_{last_date.strftime('%Y%m%d')}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                            
+                            st.markdown("### 📋 PROTOKÓŁ OPERACYJNY:")
+                            c1, c2, c3 = st.columns(3)
+                            c1.info(f"**ETAP 1: BAZA**\n\n⚓ Dno: `{recent_low:.2f}$` \n🛡️ SL: `{stop_loss:.2f}$`")
+                            c2.warning(f"**ETAP 2: CEL**\n\n🔵 {dyn_target_name}: `{dyn_target_1:.2f}$` \n⚖️ R:R: `{rr_ratio:.2f}`")
+                            c3.success(f"**ETAP 3: SATURN**\n\n✨ Finał: `{fib_4236:.2f}$` \n🚀 Zysk: `+{((fib_4236/current_price)-1)*100:.1f}%` ")
+                            
+                            # --- WYSWIETLANIE PIWNICY EDGAR W UI ---
+                            st.divider()
+                            st.markdown("### 🕵️‍♂️ PIWNICA EDGAR (SEC) - BEZLITOSNY SKAN ZAGROŻEŃ")
+                            st.info("System wnika prosto do amerykańskiego archiwum rządowego EDGAR. Czyta właściwe dokumenty HTML omijając nakładki i zrywa maski księgowe. Posiada system detekcji zwolnień (ADR / Rule 12g3-2(b)) dla spółek zagranicznych.")
+                            
+                            if edgar_error:
+                                st.error(edgar_error)
+                            else:
+                                c_left, c_right = st.columns(2)
+                                with c_left:
+                                    st.markdown("#### 🐋 1. Wieloryby (13F / 12M)")
+                                    if edgar_wieloryby_stan == "success": st.success(edgar_wieloryby_txt)
+                                    elif edgar_wieloryby_stan == "warning": st.warning(edgar_wieloryby_txt)
+                                    else: st.error(edgar_wieloryby_txt)
+                                    
+                                    st.markdown("#### 👔 2. Zarząd (Form 4 / 6M)")
+                                    if edgar_insider_stan == "success": st.success(edgar_insider_txt)
+                                    elif edgar_insider_stan == "warning": st.warning(edgar_insider_txt)
+                                    else: st.info(edgar_insider_txt)
+                                    
+                                    st.markdown("#### 🩻 3. Finanse (Raporty Główne)")
+                                    if edgar_anatomia_stan == "error": st.error(edgar_anatomia_txt)
+                                    elif edgar_anatomia_stan == "success": st.success(edgar_anatomia_txt)
+                                    else: st.info(edgar_anatomia_txt)
+                                    
+                                with c_right:
+                                    st.markdown("#### 🖨️ 4. Drukarka Akcji (S-1/S-3)")
+                                    if edgar_s3_stan == "error": st.error(edgar_s3_txt)
+                                    elif edgar_s3_stan == "info": st.info(edgar_s3_txt)
+                                    else: st.success(edgar_s3_txt)
+                                    
+                                    st.markdown("#### 🔥 5. Radar Going Concern (Skan EDGAR)")
+                                    if 'edgar_8k_stan' in locals():
+                                        if edgar_8k_stan == "error": st.error(edgar_8k_txt)
+                                        elif edgar_8k_stan == "info": st.info(edgar_8k_txt)
+                                        else: st.success(edgar_8k_txt)
+                                    
+                                    st.markdown("#### 🕸️ 6. Radar Pułapek (DEF 14A)")
+                                    if edgar_14a_stan == "error": st.error(edgar_14a_txt)
+                                    elif edgar_14a_stan == "info": st.info(edgar_14a_txt)
+                                    else: st.success(edgar_14a_txt)
+                                    
+                                    if edgar_short_txt:
+                                        st.markdown("#### 📉 7. Poziom Zaszortowania")
+                                        st.warning(edgar_short_txt)
+                    except Exception as e:
+                        st.error(f"Krytyczny błąd aparatury: {e}")
+                        
+        # =========================================================================
+        # --- TUTAJ WPINAMY NOWY MODUŁ WCZESNEGO WYKRYWANIA ANOMALII ON-DEMAND ---
+        # =========================================================================
+        if 'early_anomaly_detector' not in st.session_state:
+            st.session_state['early_anomaly_detector'] = EarlyAnomalyDetector()
+            
+        st.session_state['early_anomaly_detector'].render_anomaly_dashboard()
+
+    @st.fragment
+    def render_catalyst_radar(self):
+        """
+        Moduł wczesnego wykrywania katalizatorów wzrostu (Pump Catcher) 
+        ORAZ krytycznych zagrożeń (Red Flags / Dump Radar).
+        Skanuje rynek pod kątem nadchodzących wydarzeń, raportów, dywidend 
+        oraz newsów zawierających słowa kluczowe wywołujące FOMO lub PANIKĘ u ulicy.
+        Działa globalnie, zastępując braki w danych SEC dla rynków zagranicznych.
+        Wbudowany system dwujęzyczny (Polski + Oryginał) oparty na deep-translator.
+        """
+        import streamlit as st
+        import yfinance as yf
+        import pandas as pd
+        import re
+        from datetime import datetime, timedelta
+        import warnings
+        import feedparser
+        import urllib.parse
+        import time
+        
+        warnings.filterwarnings('ignore', category=FutureWarning)
+
+        st.divider()
+        st.markdown("## 🪣 RADAR KATALIZATORÓW: Pump & Dump Catcher (PRO)")
+        st.info("System nasłuchuje nadchodzących 'zapalników' (wielomilionowe kontrakty, fuzje, FDA) oraz KRYTYCZNYCH ZAGROŻEŃ (Going Concern, Bankructwo, Śledztwa, Emisje Akcji). Działa na wszystkie globalne rynki.")
+
+        with st.form(key="pump_catcher_form"):
+            st.markdown("""
+            <style>
+                div[data-testid="stFormSubmitButton"] > button {
+                    background-color: #111111 !important;
+                    color: #00ffcc !important;
+                    border: 1px solid #00ffcc !important;
+                    font-weight: bold;
+                    transition: all 0.3s ease-in-out;
+                }
+                div[data-testid="stFormSubmitButton"] > button:hover {
+                    background-color: #00ffcc !important;
+                    color: #000000 !important;
+                    box-shadow: 0 0 20px rgba(0, 255, 204, 0.6) !important;
+                }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            ticker = st.text_input("Podaj Ticker do nasłuchu (np. TSLA, PLTR, LONN.SW):", key="pump_ticker", value="").upper().strip()
+            submit_btn = st.form_submit_button("📡 SKANUJ GŁĘBOKO I SZUKAJ ZAPALNIKÓW / ZAGROŻEŃ")
+
+        if submit_btn:
+            if not ticker:
+                st.warning("⚠️ Wpisz ticker, aby uruchomić radary.")
+            else:
+                status_msg = st.warning(f"⏳ Skanowanie kalendarza, fundamentów i wyłapywanie ukrytych zapowiedzi dla {ticker}...")
+                try:
+                    t_obj = yf.Ticker(ticker)
+                    info = t_obj.info
+                    
+                    if 'symbol' not in info and 'regularMarketPrice' not in info and 'currentPrice' not in info:
+                        status_msg.error(f"Nie znaleziono aktywa {ticker} w bazie. Sprawdź poprawność symbolu.")
+                        return
+                    
+                    # --- 1. OSTATNI RAPORT I FUNDAMENTY ---
+                    st.markdown("### 🏛️ Ostatni Raport i Kondycja Finansowa")
+                    
+                    last_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+                    mkt_cap = info.get('marketCap', 0)
+                    pe_ratio = info.get('trailingPE', 'N/A')
+                    fwd_pe = info.get('forwardPE', 'N/A')
+                    revenue_growth = info.get('revenueGrowth', 0)
+                    earnings_growth = info.get('earningsGrowth', 0)
+                    total_cash = info.get('totalCash', 0)
+                    total_debt = info.get('totalDebt', 0)
+                    
+                    c1, c2, c3, c4 = st.columns(4)
+                    
+                    def format_large_number(num):
+                        if not isinstance(num, (int, float)) or num == 0: return "N/A"
+                        if num >= 1e12: return f"{num/1e12:.2f}T"
+                        if num >= 1e9: return f"{num/1e9:.2f}B"
+                        if num >= 1e6: return f"{num/1e6:.2f}M"
+                        return f"{num:,.0f}"
+
+                    c1.metric("Obecna Cena", f"{last_price}$")
+                    c2.metric("Market Cap", format_large_number(mkt_cap))
+                    
+                    pe_val = f"{pe_ratio:.2f}" if isinstance(pe_ratio, (int, float)) else pe_ratio
+                    fwd_pe_val = f" (Fwd: {fwd_pe:.2f})" if isinstance(fwd_pe, (int, float)) else ""
+                    c3.metric("P/E Ratio", f"{pe_val}{fwd_pe_val}")
+                    
+                    rev_g_str = f"{revenue_growth*100:.1f}%" if revenue_growth else "N/A"
+                    earn_g_str = f"{earnings_growth*100:.1f}%" if earnings_growth else "N/A"
+                    c4.metric("Wzrost Przychodów", rev_g_str, earn_g_str if earnings_growth else None)
+
+                    c5, c6, c7, c8 = st.columns(4)
+                    c5.metric("Całkowita Gotówka", format_large_number(total_cash))
+                    c6.metric("Całkowity Dług", format_large_number(total_debt))
+                    
+                    gross_margin = info.get('grossMargins', 0)
+                    c7.metric("Marża Brutto", f"{gross_margin*100:.1f}%" if gross_margin else "N/A")
+                    
+                    target_high = info.get('targetHighPrice', 'N/A')
+                    c8.metric("Target Analityków (High)", f"{target_high}$" if target_high != 'N/A' else "N/A")
+                        
+                    # --- 2. KALENDARZ WYDARZEŃ (Earnings & Dividends) ---
+                    st.divider()
+                    col_cal1, col_cal2 = st.columns(2)
+                    
+                    earnings_date_str = "Brak danych"
+                    days_to_earnings = None
+                    try:
+                        cal = t_obj.calendar
+                        if isinstance(cal, dict) and 'Earnings Date' in cal:
+                            e_dates = cal['Earnings Date']
+                            if isinstance(e_dates, list) and len(e_dates) > 0:
+                                next_earnings = pd.to_datetime(e_dates[0]).tz_localize(None)
+                                earnings_date_str = next_earnings.strftime("%Y-%m-%d")
+                                days_to_earnings = (next_earnings - datetime.now()).days
+                        elif isinstance(cal, pd.DataFrame) and not cal.empty:
+                            if 'Earnings Date' in cal.index:
+                                e_dates = cal.loc['Earnings Date'].values
+                                if len(e_dates) > 0 and pd.notna(e_dates[0]):
+                                    next_earnings = pd.to_datetime(e_dates[0]).tz_localize(None)
+                                    earnings_date_str = next_earnings.strftime("%Y-%m-%d")
+                                    days_to_earnings = (next_earnings - datetime.now()).days
+                    except Exception:
+                        pass
+                        
+                    ex_div_date = info.get('exDividendDate')
+                    div_yield = info.get('dividendYield', 0)
+                    div_rate = info.get('dividendRate', 0)
+                    
+                    if ex_div_date:
+                        ex_div_dt = datetime.fromtimestamp(ex_div_date)
+                        ex_div_str = ex_div_dt.strftime("%Y-%m-%d")
+                        days_to_div = (ex_div_dt - datetime.now()).days
+                    else:
+                        ex_div_str = "Brak lub zawieszona"
+                        days_to_div = None
+
+                    with col_cal1:
+                        st.markdown("### 📅 Skaner Raportów (Zmienność)")
+                        if days_to_earnings is not None:
+                            if 0 <= days_to_earnings <= 14:
+                                st.error(f"🚨 **ALARM! Raport tuż, tuż!**\n\n**Data:** {earnings_date_str} (za {days_to_earnings} dni).\nSpodziewaj się potężnej luki cenowej.")
+                            elif days_to_earnings < 0:
+                                st.info(f"Ostatni raport był: {earnings_date_str}. Czekamy na wyznaczenie nowej daty.")
+                            else:
+                                st.success(f"Bezpieczny dystans. Raport zaplanowany na: **{earnings_date_str}** (za {days_to_earnings} dni).")
+                        else:
+                            st.info("Brak zaplanowanej daty publikacji wyników w systemie.")
+                            
+                    with col_cal2:
+                        st.markdown("### 💰 Wiaderko na Dywidendę")
+                        if days_to_div is not None and days_to_div > 0:
+                            st.success(f"🤑 **Nadchodzi odcięcie!**\n\n**Ex-Dividend Date:** {ex_div_str} (za {days_to_div} dni).\nKup przed tą datą, aby otrzymać dywidendę: **{div_rate}$** na akcję ({div_yield*100:.2f}% rocznie).")
+                        elif days_to_div is not None and -30 <= days_to_div <= 0:
+                            st.warning(f"Odcięcie dywidendy niedawno minęło ({ex_div_str}). Kurs może być w fazie korekty po-dywidendowej.")
+                        elif div_rate and div_rate > 0:
+                            st.info(f"Spółka płaci **{div_rate}$** dywidendy ({div_yield*100:.2f}%), ale nie wyznaczono jeszcze kolejnej daty odcięcia (Ex-Date).")
+                        else:
+                            st.info("Spółka obecnie nie wypłaca dywidendy. Cały kapitał wraca do firmy.")
+
+                    # --- 3. NASŁUCH FOMO I ZAGROŻEŃ (PUMP & DUMP RADAR) ---
+                    st.divider()
+                    st.markdown("### 📰 Globalny Radar Wiadomości (Katalizatory i Czerwone Flagi)")
+                    
+                    pump_keywords_categories = {
+                        "FUZJE I PRZEJĘCIA": {
+                            "merger": "FUZJA", "acquisition": "PRZEJĘCIE", "buyout": "WYKUP", 
+                            "takeover": "PRZEJĘCIE", "hostile bid": "WROGA OFERTA PRZEJĘCIA",
+                            "rejects offer": "ODRZUCENIE OFERTY WYKUPU", "spinoff": "WYDZIELENIE SPÓŁKI"
+                        },
+                        "MEDYCYNA I BIOTECH": {
+                            "fda": "ZATWIERDZENIE FDA", "clinical trial": "BADANIA KLINICZNE",
+                            "phase 3": "III FAZA BADAŃ", "positive data": "POZYTYWNE WYNIKI BADAŃ",
+                            "approval": "ZATWIERDZENIE REGULACYJNE", "orphan drug": "STATUS LEKU SIEROCEGO"
+                        },
+                        "KONTRAKTY I BIZNES": {
+                            "partnership": "PARTNERSTWO", "strategic alliance": "STRATEGICZNY SOJUSZ",
+                            "deal": "NOWY KONTRAKT", "awarded": "WYGRANIE PRZETARGU", "contract": "KONTRAKT",
+                            "long-term agreement": "UMOWA DŁUGOTERMINOWA", "military contract": "KONTRAKT ZBROJENIOWY",
+                            "department of defense": "KONTRAKT Z PENTAGONEM", "government contract": "KONTRAKT RZĄDOWY",
+                            "memorandum of understanding": "LIST INTENCYJNY"
+                        },
+                        "INNOWACJE I TECH": {
+                            "breakthrough": "PRZEŁOM TECHNOLOGICZNY", "patent": "NOWY PATENT",
+                            "proprietary technology": "TECHNOLOGIA ZASTRZEŻONA", "ai ": "SZTUCZNA INTELIGENCJA", 
+                            "artificial intelligence": "SZTUCZNA INTELIGENCJA", "machine learning": "UCZENIE MASZYNOWE",
+                            "generative": "AI GENERATYWNE", "cloud computing": "CHMURA OBLICZENIOWA",
+                            "semiconductor": "PÓŁPRZEWODNIKI", "cybersecurity": "CYBERBEZPIECZEŃSTWO"
+                        },
+                        "FINANSE I WYNIKI": {
+                            "guidance raised": "PODNIESIENIE PROGNOZ", "guidance boost": "PODNIESIENIE PROGNOZ",
+                            "beats": "POBICIE OCZEKIWAŃ", "earnings surprise": "POZYTYWNE ZASKOCZENIE WYNIKAMI",
+                            "dividend hike": "PODNIESIENIE DYWIDENDY", "special dividend": "SPECJALNA DYWIDENDA",
+                            "share buyback": "SKUP AKCJI", "repurchase program": "PROGRAM SKUPU AKCJI",
+                            "margin expansion": "WZROST MARŻY", "cash flow positive": "DODATNI PRZEPŁYW GOTÓWKI"
+                        },
+                        "RYNKI SPECJALNE": {
+                            "crypto": "WEJŚCIE W KRYPTO", "blockchain": "BLOCKCHAIN", "bitcoin": "EKSPOSZYCJA NA BITCOIN",
+                            "ev ": "POJAZDY ELEKTRYCZNE", "energy transition": "TRANSFORMACJA ENERGETYCZNA",
+                            "lithium": "LIT", "uranium": "URAN", "clean energy": "CZYSTA ENERGIA"
+                        },
+                        "ZDARZENIA KORPORACYJNE": {
+                            "split": "SPLIT AKCJI", "activist investor": "INWESTOR AKTYWISTYCZNY", 
+                            "insider buying": "ZAKUPY INSIDERÓW"
+                        }
+                    }
+
+                    dump_keywords_categories = {
+                        "BANKRUCTWO I PRZETRWANIE": {
+                            "going concern": "ZAGROŻENIE PRZETRWANIA (Going Concern)",
+                            "bankruptcy": "BANKRUCTWO", "chapter 11": "OCHRONA PRZED WIERZYCIELAMI",
+                            "default": "NIEWYPŁACALNOŚĆ", "liquidation": "LIKWIDACJA",
+                            "insolvency": "NIEWYPŁACALNOŚĆ", "restructuring": "RESTRUKTURYZACJA"
+                        },
+                        "ROZWODNIENIE I GIEŁDA": {
+                            "offering": "NOWA EMISJA AKCJI (Rozwodnienie)", "dilution": "ROZWODNIENIE AKCJI",
+                            "delisting": "WYCOFANIE Z GIEŁDY", "non-compliance": "NARUSZENIE ZASAD GIEŁDY",
+                            "reverse split": "ODWRÓCONY SPLIT (Ratowanie kursu)", "at-the-market": "ATM (Drukarka akcji)"
+                        },
+                        "PRAWO I AFERY": {
+                            "investigation": "ŚLEDZTWO REGULACYJNE", "sec probe": "ŚLEDZTWO SEC",
+                            "lawsuit": "POZEW SĄDOWY", "fraud": "NIEPRAWIDŁOWOŚCI / OSZUSTWO",
+                            "accounting issue": "PROBLEMY KSIĘGOWE", "subpoena": "WEZWANIE DO SĄDU",
+                            "doj probe": "ŚLEDZTWO DEPARTAMENTU SPRAWIEDLIWOŚCI"
+                        },
+                        "SŁABE WYNIKI": {
+                            "misses estimates": "ROZCZAROWUJĄCE WYNIKI", "guidance cut": "OBCIĘCIE PROGNOZ",
+                            "guidance lowered": "OBCIĘCIE PROGNOZ", "downgrade": "OBCIĘCIE REKOMENDACJI",
+                            "dividend cut": "CIĘCIE DYWIDENDY", "ceo resignation": "NAGŁA DYMISJA CEO"
+                        }
+                    }
+                    
+                    money_pattern = re.compile(r'(\$\d+(?:\.\d+)?\s*(?:[mbkMBK]|million|billion|trillion))|(\d+(?:\.\d+)?\s*(?:[mbkMBK]|million|billion)\s*contract)')
+                    
+                    news_data = []
+                    
+                    try:
+                        yf_news = t_obj.news
+                        if yf_news:
+                            for item in yf_news:
+                                n_title = item.get('title', '')
+                                n_link = item.get('link', item.get('url', ''))
+                                n_pub = item.get('publisher', 'Yahoo Finance')
+                                n_time = item.get('providerPublishTime', None)
+                                if n_title:
+                                    news_data.append({'title': n_title, 'link': n_link, 'publisher': n_pub, 'pub_time': n_time})
+                    except Exception:
+                        pass
+                        
+                    if not news_data:
+                        try:
+                            rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+                            feed = feedparser.parse(rss_url)
+                            for entry in feed.entries:
+                                n_title = entry.get('title', '')
+                                n_link = entry.get('link', '')
+                                n_pub = entry.get('publisher', 'Yahoo RSS')
+                                n_time = None
+                                if 'published_parsed' in entry and entry.published_parsed:
+                                    n_time = time.mktime(entry.published_parsed)
+                                if n_title:
+                                    news_data.append({'title': n_title, 'link': n_link, 'publisher': n_pub, 'pub_time': n_time})
+                        except Exception:
+                            pass
+                    
+                    if news_data and len(news_data) > 0:
+                        with st.container(height=800):
+                            news_cols = st.columns(2)
+                            col_index = 0
+                            events_found = False
+                            
+                            for article in news_data:
+                                title_orig = article['title']
+                                link = article['link']
+                                publisher = article['publisher']
+                                pub_time = article['pub_time']
+                                
+                                if not link or link.strip() == "":
+                                    safe_title = urllib.parse.quote(title_orig)
+                                    link = f"https://www.google.com/search?q={safe_title}&tbm=nws"
+                                
+                                time_str = datetime.fromtimestamp(pub_time).strftime('%Y-%m-%d %H:%M') if pub_time else "Ostatnio"
+                                
+                                title_lower = " " + title_orig.lower() + " "
+                                
+                                # --- MODUŁ TŁUMACZENIA NA POLSKI (deep-translator) ---
+                                title_pl = title_orig
+                                try:
+                                    from deep_translator import GoogleTranslator
+                                    title_pl = GoogleTranslator(source='auto', target='pl').translate(title_orig)
+                                except Exception:
+                                    pass # Jeśli API odrzuci lub brak pakietu, wyświetlamy oryginał
+                                # ----------------------------------
+                                
+                                pump_triggers = []
+                                dump_triggers = []
+                                detected_pump_cats = set()
+                                detected_dump_cats = set()
+                                
+                                for cat_name, cat_keywords in pump_keywords_categories.items():
+                                    for key, pl_desc in cat_keywords.items():
+                                        if key in title_lower:
+                                            pump_triggers.append(pl_desc)
+                                            detected_pump_cats.add(cat_name)
+                                
+                                money_match = money_pattern.search(title_lower)
+                                if money_match:
+                                    matched_str = money_match.group(0).upper()
+                                    pump_triggers.append(f"GIGANTYCZNE PIENIĄDZE ({matched_str})")
+                                    detected_pump_cats.add("KONTRAKTY I BIZNES")
+
+                                for cat_name, cat_keywords in dump_keywords_categories.items():
+                                    for key, pl_desc in cat_keywords.items():
+                                        if key in title_lower:
+                                            dump_triggers.append(pl_desc)
+                                            detected_dump_cats.add(cat_name)
+                                            
+                                pump_triggers = list(set(pump_triggers))
+                                dump_triggers = list(set(dump_triggers))
+                                
+                                with news_cols[col_index % 2]:
+                                    if dump_triggers:
+                                        events_found = True
+                                        cat_badges = " ".join([f"<span style='background-color:#ff0000; color:#ffffff; padding:2px 6px; border-radius:3px; font-size:10px; margin-right:5px;'>{c}</span>" for c in detected_dump_cats])
+                                        
+                                        st.markdown(f"""
+                                        <div style='border: 1px solid #ff0000; border-left: 5px solid #ff0000; margin-bottom: 15px; background-color: rgba(255, 0, 0, 0.05); padding: 12px; border-radius: 5px; height: 100%;'>
+                                            <div style='margin-bottom: 8px;'>{cat_badges}</div>
+                                            <h5 style='color: #ff0000; margin-bottom: 5px; font-size: 14px;'>🚨 KRYTYCZNE ZAGROŻENIE: {', '.join(dump_triggers)}</h5>
+                                            <p style='margin-bottom: 5px; font-size: 14px; line-height: 1.4;'><b>{title_pl}</b></p>
+                                            <p style='margin-bottom: 10px; font-size: 12px; line-height: 1.3; color: #888888;'>🇬🇧 <i>{title_orig}</i></p>
+                                            <div style='font-size: 11px; color: #aaaaaa; border-top: 1px solid #333; padding-top: 5px;'>
+                                                {time_str} | {publisher} | <a href='{link}' target='_blank' style='color: #ff5555; text-decoration: none;'>Czytaj ➔</a>
+                                            </div>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                        
+                                    elif pump_triggers:
+                                        events_found = True
+                                        cat_badges = " ".join([f"<span style='background-color:#ff00ff; color:#000; padding:2px 6px; border-radius:3px; font-size:10px; margin-right:5px;'>{c}</span>" for c in detected_pump_cats])
+                                        
+                                        st.markdown(f"""
+                                        <div style='border: 1px solid #ff00ff; border-left: 5px solid #ff00ff; margin-bottom: 15px; background-color: rgba(255, 0, 255, 0.05); padding: 12px; border-radius: 5px; height: 100%;'>
+                                            <div style='margin-bottom: 8px;'>{cat_badges}</div>
+                                            <h5 style='color: #ff00ff; margin-bottom: 5px; font-size: 14px;'>🚀 ZAPALNIK (POMPA): {', '.join(pump_triggers)}</h5>
+                                            <p style='margin-bottom: 5px; font-size: 14px; line-height: 1.4;'><b>{title_pl}</b></p>
+                                            <p style='margin-bottom: 10px; font-size: 12px; line-height: 1.3; color: #888888;'>🇬🇧 <i>{title_orig}</i></p>
+                                            <div style='font-size: 11px; color: #aaaaaa; border-top: 1px solid #333; padding-top: 5px;'>
+                                                {time_str} | {publisher} | <a href='{link}' target='_blank' style='color: #00ffcc; text-decoration: none;'>Czytaj ➔</a>
+                                            </div>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                        
+                                    else:
+                                        st.markdown(f"""
+                                        <div style='border: 1px solid #333; border-left: 5px solid #555; margin-bottom: 15px; background-color: rgba(255, 255, 255, 0.02); padding: 12px; border-radius: 5px; height: 100%;'>
+                                            <div style='margin-bottom: 8px;'><span style='background-color:#444; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px;'>SZUM RYNKOWY</span></div>
+                                            <p style='margin-bottom: 5px; font-size: 14px; line-height: 1.4;'><b>{title_pl}</b></p>
+                                            <p style='margin-bottom: 10px; font-size: 12px; line-height: 1.3; color: #888888;'>🇬🇧 <i>{title_orig}</i></p>
+                                            <div style='font-size: 11px; color: #aaaaaa; border-top: 1px solid #333; padding-top: 5px;'>
+                                                {time_str} | {publisher} | <a href='{link}' target='_blank' style='color: #888; text-decoration: none;'>Czytaj ➔</a>
+                                            </div>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                col_index += 1
+                                
+                        if not events_found:
+                            st.info("Brak nagłówków zdefiniowanych jako Katalizatory lub Zagrożenia. Wyświetlono jedynie neutralny szum.")
+                            
+                    else:
+                        st.info("Brak świeżych wiadomości w strumieniu dla tej spółki. Aktywo lata poza głównym radarem mediów.")
+                        
+                    # --- 4. WSKAŹNIKI STRUKTURALNE (SHORT SQUEEZE POTENTIAL) ---
+                    st.divider()
+                    st.markdown("### 🗜️ Potencjał Wyciskania Szortów (Short Squeeze)")
+                    short_float = info.get('shortPercentOfFloat', 0)
+                    short_ratio = info.get('shortRatio', 0)
+                    
+                    if short_float is not None and short_float > 0.15:
+                        st.error(f"🔥 **WYSOKIE PRAWDOPODOBIEŃSTWO WYCISKANIA!**\nAż **{short_float*100:.1f}%** akcji jest w krótkich pozycjach (Short). Jeśli jakikolwiek pozytywny news wejdzie na rynek, szorciarze będą musieli w panice odkupywać akcje, napędzając gigantyczną pompę. Days to cover: **{short_ratio}** dni.")
+                    elif short_float is not None and short_float > 0.05:
+                        st.warning(f"Zauważalny poziom krótkich pozycji: **{short_float*100:.1f}%**. Umiarkowane ryzyko/szansa na mały Short Squeeze. Days to cover: **{short_ratio}**.")
+                    else:
+                        val = short_float * 100 if short_float else 0
+                        st.success(f"Niski poziom gry na spadki ({val:.1f}%). Brak paliwa do klasycznego Short Squeeze. Ewentualna pompa musi opierać się na realnym kapitale kupujących.")
+                    
+                    # --- 5. WEHIKUŁ CZASU (INŻYNIERIA WSTECZNA DANYCH) ---
+                    st.divider()
+                    st.markdown("### 🕰️ Wehikuł Czasu (Kryminalistyka 2 lata wstecz)")
+                    st.info("Brak archiwum dla zagranicznych firm omijamy matematyką. Algorytm szuka potężnych anomalii wolumenu i załamań ceny, aby zidentyfikować ukryte rozwodnienia, splity lub historyczne kontrakty.")
+                    
+                    try:
+                        hist_df = t_obj.history(period="2y")
+                        try:
+                            splits = t_obj.splits
+                        except:
+                            splits = pd.Series(dtype=float)
+                            
+                        if not hist_df.empty:
+                            hist_df['Vol_SMA'] = hist_df['Volume'].rolling(20).mean()
+                            anomalies = hist_df[hist_df['Volume'] > (hist_df['Vol_SMA'] * 4)].copy()
+                            anomalies['Price_Change'] = hist_df['Close'].pct_change() * 100
+                            
+                            anomalies = anomalies.sort_index(ascending=False)
+                            
+                            if not anomalies.empty or not splits.empty:
+                                if not splits.empty:
+                                    st.markdown("#### ✂️ Historia Splitów i Reverse Splitów")
+                                    for date, ratio in splits.items():
+                                        split_date = date.strftime("%Y-%m-%d")
+                                        if ratio < 1:
+                                            st.error(f"🚨 **{split_date}**: Wykryto REVERSE SPLIT (Stosunek: {ratio}). Często używane do ukrycia masowego rozwodnienia i ratowania przed wyrzuceniem z giełdy.")
+                                        else:
+                                            st.info(f"🔹 **{split_date}**: Normalny Split akcji (Stosunek: {ratio}).")
+                                            
+                                if not anomalies.empty:
+                                    st.markdown("#### 📊 Historyczne Anomalie (Zapalniki i Zrzuty)")
+                                    for date, row in anomalies.head(8).iterrows():
+                                        a_date = date.strftime("%Y-%m-%d")
+                                        p_change = row['Price_Change']
+                                        vol = row['Volume']
+                                        
+                                        if p_change <= -10:
+                                            st.error(f"🩸 **{a_date}**: POTĘŻNY ZRZUT / ROZWODNIENIE. Cena: **{p_change:.1f}%**. Złowiono gigantyczny wolumen ({vol:,.0f}). Prawdopodobnie ukryta emisja akcji lub fatalny raport.")
+                                        elif p_change >= 10:
+                                            st.success(f"🚀 **{a_date}**: POTĘŻNA POMPA / KONTRAKT. Cena: **+{p_change:.1f}%**. Ekstremalny wolumen ({vol:,.0f}). Ślad po wejściu ulicy, wygraniu przetargu lub fuzji.")
+                                        else:
+                                            st.warning(f"⚖️ **{a_date}**: WALKA Z KRAHKENEM. Ekstremalny wolumen ({vol:,.0f}), ale cena utrzymała się w miejscu ({p_change:+.1f}%). Gruba wymiana rąk lub absorpcja zrzutu.")
+                            else:
+                                st.info("Wykres z ostatnich 2 lat nie wykazuje drastycznych, nienaturalnych skoków wolumenu i załamań ceny.")
+                    except Exception as e:
+                        st.error(f"Błąd analizy historycznej Wehikułu Czasu: {e}")
+
+                    status_msg.success(f"✅ Horyzont zdarzeń przeskanowany pomyślnie dla {ticker}!")
+                    
+                except Exception as e:
+                    status_msg.error(f"Błąd systemowy podczas namierzania katalizatorów: {e}")
 
     @st.fragment
     def render_anomaly_hunter(self):
@@ -30626,8 +32266,11 @@ def main():
     
     app.render_opportunity_scanners()
     app.render_omega_terminal()
-    app.render_anomaly_hunter()
     app.render_supertrend_garage()
+    app.render_smart_money_cycle()
+    app.render_wyckoff_target_matrix()
+    app.render_catalyst_radar()
+    app.render_anomaly_hunter()
     app.display_bottom_ticker()
 
 # ==========================================================
