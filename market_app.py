@@ -26832,6 +26832,209 @@ class MarketProbabilityIndex:
             return None, []
 
     @st.fragment
+    def render_wyckoff_greed_cockpit(self):
+        """
+        Kwantowy Kokpit Chciwości (Greed Cockpit) - WERSJA LAMBO SPEEDOMETER 🏎️:
+        Pozwala na dynamiczne wpisanie do 4 dowolnych tickerów (Krypto lub Akcje USA).
+        Wyświetla małe logo.png wewnątrz każdego zegara nad wskaźnikiem RPM.
+        """
+        import streamlit as st
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        import plotly.graph_objects as go
+        from PIL import Image
+        import os
+
+        st.divider()
+        st.markdown("## 🏎️ KOKPIT CHCIWOŚCI: Zegary Lambo (Crypto & Wall Street)")
+        st.info("Moduł mierzy matematyczne przegrzanie walorów (0-100) na bazie RSI oraz odchylenia od 20-dniowej średniej (Grawitacja). Wpisz dowolne 4 tickery, oddzielając je przecinkiem.")
+
+        # Okienko do wpisywania tickerów (4 dowolne, brak sztywnego BTC)
+        user_input = st.text_input(
+            "Wpisz do 4 tickerów do porównania (np. BTC-USD, ETH-USD, NVDA, TSLA):",
+            key="greed_cockpit_input",
+            value="BTC-USD, ETH-USD, NVDA, TSLA"
+        )
+
+        if st.button("ODPAL SILNIK 🔑", type="primary"):
+            # Budowanie listy tickerów z pola tekstowego (limit do 4)
+            active_tickers = []
+            if user_input:
+                active_tickers = [t.strip().upper() for t in user_input.split(",") if t.strip()][:4]
+
+            if not active_tickers:
+                st.warning("⚠️ Wpisz co najmniej jeden symbol (Ticker).")
+                return
+
+            with st.spinner("Tankowanie danych i rozgrzewanie silników..."):
+                try:
+                    # Pobieranie paczki danych (60 dni)
+                    tickers_str = " ".join(active_tickers)
+                    df = yf.download(tickers_str, period="60d", progress=False)
+
+                    if df.empty:
+                        st.warning("⚠️ Brak odpowiedzi z giełdy. Sprawdź poprawność wpisanych tickerów.")
+                        return
+
+                    results = []
+
+                    for ticker in active_tickers:
+                        try:
+                            # Bezpieczna nawigacja po strukturze DataFrame (dla 1 i wielu tickerów)
+                            if isinstance(df.columns, pd.MultiIndex):
+                                if ticker not in df['Close'].columns: continue
+                                close_prices = df['Close'][ticker].dropna()
+                            else:
+                                close_prices = df['Close'].dropna()
+
+                            if len(close_prices) < 25: continue
+
+                            current_price = close_prices.iloc[-1]
+
+                            # A) Matematyka RSI (14)
+                            delta = close_prices.diff()
+                            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                            rs = gain / loss
+                            rs = rs.replace([np.inf, -np.inf], 100)
+                            rsi_series = 100 - (100 / (1 + rs))
+                            current_rsi = rsi_series.iloc[-1]
+                            if np.isnan(current_rsi): current_rsi = 50
+
+                            # B) Odchylename Grawitacyjne (SMA 20)
+                            sma20 = close_prices.rolling(window=20).mean().iloc[-1]
+                            dist_from_sma_pct = ((current_price / sma20) - 1) * 100
+
+                            # C) Skalowanie Chciwości (0-100)
+                            is_crypto = "-USD" in ticker or ticker in ["BTC", "ETH", "SOL", "DOGE", "XRP"]
+                            normalization_barrier = 30.0 if is_crypto else 15.0
+                            
+                            sma_score = (dist_from_sma_pct / normalization_barrier) * 100
+                            sma_score = max(0, min(100, sma_score))
+
+                            # Kompozyt Kwantowy (60% Momentum, 40% Rozciągnięcie struktury)
+                            greed_index = (current_rsi * 0.6) + (sma_score * 0.4)
+                            greed_index = max(0, min(100, greed_index))
+
+                            if greed_index >= 75: label = "🚨 EKSTREMALNA CHCIWOŚĆ (Redline)"
+                            elif greed_index >= 55: label = "🟠 Ulica Kupuje (Wysokie Obroty)"
+                            elif greed_index >= 35: label = "⚪ Neutralnie (Bieg Jałowy)"
+                            else: label = "🟢 STRACH / OKAZJA (Akumulacja)"
+
+                            results.append({
+                                'Ticker': ticker,
+                                'Obecna Cena': round(current_price, 2),
+                                'Psychologia': label,
+                                'Wskaźnik RSI': round(current_rsi, 1),
+                                'Odchylenie Średniej': f"{round(dist_from_sma_pct, 1)}%",
+                                'Indeks Chciwości': round(greed_index, 1)
+                            })
+                        except Exception:
+                            continue
+
+                    df_results = pd.DataFrame(results)
+                    if df_results.empty:
+                        st.warning("Nie udało się przeliczyć parametrów dla podanych symboli.")
+                        return
+
+                    # Próba wczytania logotypu
+                    logo_img = None
+                    if os.path.exists("logo.png"):
+                        try:
+                            logo_img = Image.open("logo.png")
+                        except Exception:
+                            pass
+
+                    # 3. GENEROWANIE ZEGARÓW (Gauges)
+                    num_gauges = len(results)
+                    
+                    # Logika układu zegarów w zależności od ilości tickerów
+                    if num_gauges == 1:
+                        positions = [{'x': [0.2, 0.8], 'y': [0.1, 0.9]}]
+                    elif num_gauges == 2:
+                        positions = [{'x': [0.0, 0.45], 'y': [0.1, 0.9]}, {'x': [0.55, 1.0], 'y': [0.1, 0.9]}]
+                    elif num_gauges == 3:
+                        positions = [{'x': [0.0, 0.30], 'y': [0.1, 0.9]}, {'x': [0.35, 0.65], 'y': [0.1, 0.9]}, {'x': [0.70, 1.0], 'y': [0.1, 0.9]}]
+                    else:
+                        positions = [
+                            {'x': [0.0, 0.45], 'y': [0.55, 1.0]}, {'x': [0.55, 1.0], 'y': [0.55, 1.0]},
+                            {'x': [0.0, 0.45], 'y': [0.0, 0.45]}, {'x': [0.55, 1.0], 'y': [0.0, 0.45]}
+                        ]
+
+                    fig = go.Figure()
+                    for i, res in enumerate(results):
+                        if i > 3: break # Max 4 zegary
+                        
+                        val = res['Indeks Chciwości']
+                        
+                        # Kolor głównego paska w zależności od RPM
+                        if val >= 75: bar_color = "#ff0033"
+                        elif val >= 55: bar_color = "#ffaa00"
+                        else: bar_color = "#00ffcc"
+
+                        fig.add_trace(go.Indicator(
+                            mode="gauge+number",
+                            value=val,
+                            title={'text': res['Ticker'], 'font': {'size': 24, 'color': 'white', 'family': 'Courier New'}},
+                            domain=positions[i],
+                            number={'font': {'size': 40, 'color': bar_color, 'family': 'Courier New'}, 'suffix': " RPM"},
+                            gauge={
+                                'axis': {'range': [0, 100], 'tickwidth': 2, 'tickcolor': "white", 'tickfont': {'family': 'Courier New'}},
+                                'bar': {'color': bar_color, 'thickness': 0.8},
+                                'bgcolor': "rgba(0,0,0,0)",
+                                'borderwidth': 2,
+                                'bordercolor': "#333333",
+                                'steps': [
+                                    {'range': [0, 35], 'color': "rgba(0, 255, 85, 0.15)"},    # Bieg Jałowy (Zielony)
+                                    {'range': [35, 55], 'color': "rgba(255, 255, 255, 0.05)"}, # Neutral (Szary)
+                                    {'range': [55, 75], 'color': "rgba(255, 170, 0, 0.2)"},    # Wysokie Obroty (Pomarańczowy)
+                                    {'range': [75, 100], 'color': "rgba(255, 0, 51, 0.3)"}     # Redline (Czerwony)
+                                ],
+                                'threshold': {
+                                    'line': {'color': "red", 'width': 4},
+                                    'thickness': 1,
+                                    'value': 90
+                                }
+                            }
+                        ))
+
+                        # Jeśli logo zostało wczytane poprawnie, rzucamy je w środek nad RPM
+                        if logo_img:
+                            x_center = sum(positions[i]['x']) / 2.0
+                            # y_center celuje troszkę wyżej niż matematyczny dół zegara
+                            y_center = positions[i]['y'][0] + (positions[i]['y'][1] - positions[i]['y'][0]) * 0.45
+
+                            fig.add_layout_image(
+                                dict(
+                                    source=logo_img,
+                                    xref="paper", yref="paper",
+                                    x=x_center, y=y_center,
+                                    sizex=0.18, sizey=0.18,  # Dostosowanie rozmiaru grafiki względem obszaru
+                                    xanchor="center", yanchor="middle",
+                                    layer="above"
+                                )
+                            )
+
+                    fig.update_layout(
+                        template='plotly_dark',
+                        plot_bgcolor='#0e1117',
+                        paper_bgcolor='#0e1117',
+                        height=600 if num_gauges > 2 else 400,
+                        margin=dict(l=20, r=20, t=40, b=20)
+                    )
+
+                    # Bezpośrednie, stabilne wywołanie
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # 4. TWARDA TABELA PRAWDY
+                    st.markdown("### 🔍 Szczegółowy Odczyt Sensoryczny")
+                    st.dataframe(df_results, hide_index=True, width='stretch')
+
+                except Exception as main_e:
+                    st.error(f"Aparatura radaru chciwości zderzyła się z błędem: {main_e}")
+
+    @st.fragment
     def render_wyckoff_target_matrix(self):
         """
         Matryca Celów Wyckoffa + Elliott Wave (Target Calculator) - WERSJA SATURN 🪐:
@@ -32268,6 +32471,7 @@ def main():
     app.render_omega_terminal()
     app.render_supertrend_garage()
     app.render_smart_money_cycle()
+    app.render_wyckoff_greed_cockpit()
     app.render_wyckoff_target_matrix()
     app.render_catalyst_radar()
     app.render_anomaly_hunter()
