@@ -28252,6 +28252,254 @@ class MarketProbabilityIndex:
                     status_msg.error(f"Błąd systemowy podczas namierzania katalizatorów: {e}")
 
     @st.fragment
+    def render_omni_comparator(self):
+        """
+        Globalny Komparator Makroekonomiczny (Omni-Chart) z obsługą PROXY:
+        Pozwala na porównanie do 5 dowolnych aktywów na jednym znormalizowanym wykresie.
+        Wprowadzono 3 tryby silnika: 
+        1. Skumulowany Zysk (%) - do sprawdzania, co dało najwięcej zarobić.
+        2. Korelacja (Z-Score) - powiększa mało zmienne aktywa, by idealnie pokazać odwrotne korelacje.
+        3. Wartość Nominalna (Surowa Cena) - idealna do zestawiania walut (np. EUR/PLN vs EUR/USD) w ich naturalnej skali.
+        Zoptymalizowano UI: wymuszono śnieżnobiały kolor dla tytułu, legendy oraz osi.
+        """
+        import streamlit as st
+        import yfinance as yf
+        import pandas as pd
+        import plotly.graph_objects as go
+        from datetime import timedelta
+
+        st.divider()
+        st.markdown("## 🌍 OMNI-KOMPARATOR: Globalne Starcie Aktywów")
+        st.info("Zderz ze sobą 5 dowolnych rynków lub syntetyków. Jeśli chcesz zobaczyć korelację między wysoce zmiennym krypto a powolnym dolarem (DXY), przełącz silnik na tryb 'Korelacja (Z-Score)'. Aby porównywać kursy walut w ich naturalnej skali, wybierz 'Wartość Nominalna'.")
+        
+        with st.expander("📝 Ściągawka Tickerów i Wskaźników Syntetycznych"):
+            st.markdown("""
+            **WSKAŹNIKI SYNTETYCZNE (Wpisz te nazwy, algorytm wyliczy je w locie):**
+            * `MVRV` - Proxy On-Chain dla Bitcoina (Cena BTC / SMA200). Wycena sprawiedliwa.
+            * `ISM` - Proxy Przemysłu (Miedź / Złoto). Wyprzedza odczyty gospodarcze PMI.
+            * `RISK` - Apetyt na ryzyko (S&P500 / Obligacje TLT). Risk-On vs Risk-Off.
+            * `INFLATION` - Oczekiwania inflacyjne (Obligacje TIP / IEF). Przewiduje ukrytą inflację.
+            * `ALTSEASON` - Siła Altcoinów (ETH / BTC). Wskazuje rotację kapitału w krypto.
+            
+            **STANDARDOWE TICKERY:**
+            * **Akcje firm:** `NVDA`, `TSLA`, `AAPL`, `MSTR`
+            * **Krypto:** `BTC-USD`, `ETH-USD`, `SOL-USD`
+            * **Indeksy:** `^GSPC` (S&P 500), `^IXIC` (NASDAQ)
+            * **Surowce:** `CL=F` (Ropa WTI), `GC=F` (Złoto), `SI=F` (Srebro), `HG=F` (Miedź)
+            * **Waluty & Macro:** `EURUSD=X` (Euro/Dolar), `EURPLN=X` (Euro/PLN), `DX-Y.NYB` (DXY), `^TNX` (Obligacje), `^VIX` (Indeks Strachu)
+            """)
+
+        with st.form(key="omni_comparator_form"):
+            st.markdown("""
+                <style>
+                div[data-testid="stFormSubmitButton"] > button {
+                    background-color: #000000 !important;
+                    color: #ffffff !important;
+                    border: 1px solid #333333 !important;
+                    transition: all 0.3s ease-in-out;
+                }
+                div[data-testid="stFormSubmitButton"] > button:hover {
+                    border: 1px solid #00ffcc !important;
+                    color: #00ffcc !important;
+                    box-shadow: 0 0 15px rgba(0, 255, 204, 0.4) !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1: t1 = st.text_input("Cel 1:", value="EURPLN=X").upper().strip()
+            with col2: t2 = st.text_input("Cel 2:", value="EURUSD=X").upper().strip()
+            with col3: t3 = st.text_input("Cel 3:", value="DX-Y.NYB").upper().strip()
+            with col4: t4 = st.text_input("Cel 4:", value="").upper().strip()
+            with col5: t5 = st.text_input("Cel 5:", value="").upper().strip()
+            
+            period_col, mode_col, btn_col = st.columns([1, 2, 2])
+            with period_col:
+                period = st.selectbox("Zakres czasu:", ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], index=3)
+            with mode_col:
+                chart_mode = st.selectbox(
+                    "Wybierz Tryb Silnika:", 
+                    [
+                        "1. Skumulowany Zysk (%)", 
+                        "2. Korelacja (Z-Score) - Kształt i Siła",
+                        "3. Wartość Nominalna (Surowa Cena)"
+                    ],
+                    index=2 # Domyślnie na tryb nominalny pod Twoje waluty
+                )
+            with btn_col:
+                st.markdown("<br>", unsafe_allow_html=True)
+                submit_btn = st.form_submit_button("GENERUJ ZDERZENIE TYTANÓW 💥")
+
+        if submit_btn:
+            tickers = [t for t in [t1, t2, t3, t4, t5] if t]
+            
+            if not tickers:
+                st.warning("⚠️ Wpisz co najmniej jeden ticker.")
+                return
+            
+            raw_tickers = set()
+            for t in tickers:
+                if t == "MVRV":
+                    raw_tickers.add("BTC-USD")
+                elif t == "ISM":
+                    raw_tickers.add("HG=F") 
+                    raw_tickers.add("GC=F") 
+                elif t == "RISK":
+                    raw_tickers.add("^GSPC") 
+                    raw_tickers.add("TLT")   
+                elif t == "INFLATION":
+                    raw_tickers.add("TIP")   
+                    raw_tickers.add("IEF")   
+                elif t == "ALTSEASON":
+                    raw_tickers.add("ETH-USD")
+                    raw_tickers.add("BTC-USD")
+                else:
+                    raw_tickers.add(t)
+
+            with st.spinner("Kwantowa synteza proxy i synchronizacja rynków..."):
+                try:
+                    download_period = "max" if period == "max" else "5y"
+                    df = yf.download(" ".join(raw_tickers), period=download_period, progress=False)
+                    
+                    if df.empty:
+                        st.error("Brak danych z giełdy. Sprawdź poprawność symboli.")
+                        return
+
+                    fig = go.Figure()
+
+                    if isinstance(df.columns, pd.MultiIndex):
+                        close_data = df['Close']
+                    else:
+                        close_data = pd.DataFrame(df['Close'])
+                        close_data.columns = list(raw_tickers)
+
+                    period_days_map = {"1mo": 30, "3mo": 90, "6mo": 180, "1y": 365, "2y": 730, "5y": 1825}
+                    colors = ['#00ffcc', '#ff00ff', '#ffaa00', '#00aaff', '#ff0033']
+                    
+                    for i, ticker in enumerate(tickers):
+                        series = None
+                        label_name = ticker
+                        
+                        if ticker == "MVRV":
+                            if "BTC-USD" in close_data.columns:
+                                btc = close_data["BTC-USD"].dropna()
+                                sma200 = btc.rolling(window=200).mean()
+                                series = btc / sma200 
+                                label_name = "MVRV Proxy (BTC)"
+                                
+                        elif ticker == "ISM":
+                            if "HG=F" in close_data.columns and "GC=F" in close_data.columns:
+                                copper = close_data["HG=F"].dropna()
+                                gold = close_data["GC=F"].dropna()
+                                copper, gold = copper.align(gold, join='inner')
+                                series = copper / gold 
+                                label_name = "ISM Proxy"
+
+                        elif ticker == "RISK":
+                            if "^GSPC" in close_data.columns and "TLT" in close_data.columns:
+                                sp500 = close_data["^GSPC"].dropna()
+                                tlt = close_data["TLT"].dropna()
+                                sp500, tlt = sp500.align(tlt, join='inner')
+                                series = sp500 / tlt 
+                                label_name = "RISK Proxy"
+
+                        elif ticker == "INFLATION":
+                            if "TIP" in close_data.columns and "IEF" in close_data.columns:
+                                tip = close_data["TIP"].dropna()
+                                ief = close_data["IEF"].dropna()
+                                tip, ief = tip.align(ief, join='inner')
+                                series = tip / ief 
+                                label_name = "INFLATION Proxy"
+
+                        elif ticker == "ALTSEASON":
+                            if "ETH-USD" in close_data.columns and "BTC-USD" in close_data.columns:
+                                eth = close_data["ETH-USD"].dropna()
+                                btc = close_data["BTC-USD"].dropna()
+                                eth, btc = eth.align(btc, join='inner')
+                                series = eth / btc 
+                                label_name = "ALTSEASON Proxy"
+                                
+                        else:
+                            if ticker in close_data.columns:
+                                series = close_data[ticker].dropna()
+
+                        if series is not None and not series.empty:
+                            if period != "max":
+                                cutoff_date = series.index[-1] - timedelta(days=period_days_map[period])
+                                series = series[series.index >= cutoff_date]
+                                
+                            if not series.empty:
+                                # SILNIK DECYZYJNY: Procenty vs Z-Score vs Wartość Nominalna
+                                if chart_mode.startswith("1"):
+                                    # Tryb klasyczny: Procenty
+                                    first_val = series.iloc[0]
+                                    plot_series = ((series / first_val) - 1) * 100
+                                    current_val = plot_series.iloc[-1]
+                                    sign = "+" if current_val >= 0 else ""
+                                    suffix = "%"
+                                    y_axis_title = "Zysk / Strata (%)"
+                                elif chart_mode.startswith("2"):
+                                    # Tryb Korelacji: Z-Score (Odchylenie Standardowe)
+                                    mean_val = series.mean()
+                                    std_val = series.std()
+                                    plot_series = (series - mean_val) / std_val if std_val != 0 else series - mean_val
+                                    current_val = plot_series.iloc[-1]
+                                    sign = "+" if current_val >= 0 else ""
+                                    suffix = " Z-Score"
+                                    y_axis_title = "Siła Względna (Z-Score)"
+                                else:
+                                    # Tryb Nominalny: Czysta Cena (Idealne do walut)
+                                    plot_series = series
+                                    current_val = plot_series.iloc[-1]
+                                    sign = ""
+                                    suffix = ""
+                                    y_axis_title = "Wartość Nominalna / Cena"
+                                
+                                fig.add_trace(go.Scatter(
+                                    x=plot_series.index, 
+                                    y=plot_series,
+                                    mode='lines',
+                                    name=f"{label_name} ({sign}{current_val:.4f}{suffix})",
+                                    line=dict(width=2, color=colors[i % len(colors)])
+                                ))
+
+                    fig.update_layout(
+                        title=dict(
+                            text=f"Analiza Porównawcza: {chart_mode.split(' - ')[0]} - {period.upper()}",
+                            font=dict(color='#ffffff')
+                        ),
+                        font=dict(color='#ffffff'),
+                        template='plotly_dark',
+                        plot_bgcolor='#0e1117',
+                        paper_bgcolor='#0e1117',
+                        hovermode='x unified',
+                        xaxis=dict(
+                            showgrid=True, gridcolor='#333333', 
+                            title=dict(text="Przestrzeń Czasowa", font=dict(color='#ffffff')),
+                            rangeslider=dict(visible=True, thickness=0.05, bgcolor='#0e1117'),
+                            type="date",
+                            tickfont=dict(color='#ffffff')
+                        ),
+                        yaxis=dict(
+                            showgrid=True, gridcolor='#333333', 
+                            title=dict(text=y_axis_title, font=dict(color='#ffffff')),
+                            zeroline=True, zerolinecolor='#ffffff', zerolinewidth=2,
+                            tickfont=dict(color='#ffffff')
+                        ),
+                        legend=dict(
+                            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, 
+                            font=dict(size=12, color='#ffffff')
+                        ),
+                        margin=dict(l=20, r=20, t=60, b=20),
+                        height=600
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+
+                except Exception as e:
+                    st.error(f"Krytyczny błąd matrycy Omni-Komparatora: {e}")
+
+    @st.fragment
     def render_anomaly_hunter(self):
         """
         Sekcja wizualna: Wyświetla interfejs detektora anomalii i rysuje dedykowany wykres.
@@ -32474,6 +32722,7 @@ def main():
     app.render_wyckoff_greed_cockpit()
     app.render_wyckoff_target_matrix()
     app.render_catalyst_radar()
+    app.render_omni_comparator()
     app.render_anomaly_hunter()
     app.display_bottom_ticker()
 
