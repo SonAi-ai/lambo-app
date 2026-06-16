@@ -28498,6 +28498,1143 @@ class MarketProbabilityIndex:
 
                 except Exception as e:
                     st.error(f"Krytyczny błąd matrycy Omni-Komparatora: {e}")
+                    
+    @st.fragment
+    def render_floating_searcher(self):
+        """
+        Renderuje pływający, przeciągany przycisk wyszukiwarki tickerów.
+        Zaktualizowano bramkę CORS dla skanerów Yahoo oraz zmieniono matematykę 
+        dla "top krypto" na sortowanie według największych zysków procentowych.
+        """
+        import streamlit.components.v1 as components
+        import streamlit as st
+        
+        st.markdown("""
+        <style>
+        #lambo-draggable-search {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            z-index: 9999999;
+            background: rgba(14, 17, 23, 0.95);
+            border: 2px solid #00ff41;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 0 20px rgba(0,255,65,0.4);
+            color: white;
+            font-family: Arial, sans-serif;
+            width: 350px;
+            display: none;
+            cursor: move;
+        }
+        #lambo-search-btn {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            z-index: 9999998;
+            background: #00ff41;
+            color: black;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 50px;
+            font-weight: bold;
+            cursor: move;
+            box-shadow: 0 0 15px rgba(0,255,65,0.5);
+            user-select: none;
+            transition: background 0.2s;
+        }
+        #lambo-search-btn:hover {
+            background: #00cc33;
+        }
+        #lambo-search-results {
+            max-height: 280px;
+            overflow-y: auto;
+            margin-top: 15px;
+            font-size: 13px;
+        }
+        .lambo-result-item {
+            padding: 8px;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .lambo-result-item:hover {
+            background: #222;
+        }
+        #lambo-search-input {
+            width: 100%;
+            padding: 10px;
+            background: #000;
+            border: 1px solid #555;
+            color: #00ff41;
+            border-radius: 5px;
+            font-weight: bold;
+            outline: none;
+        }
+        #lambo-close-btn {
+            float: right;
+            cursor: pointer;
+            color: #ff0055;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        #lambo-search-results::-webkit-scrollbar {
+            width: 8px;
+        }
+        #lambo-search-results::-webkit-scrollbar-thumb {
+            background: #00ff41;
+            border-radius: 4px;
+        }
+        </style>
+        
+        <div id="lambo-search-btn">🔍 Wyszukiwarka Tickerów</div>
+        
+        <div id="lambo-draggable-search">
+            <span id="lambo-close-btn">✖</span>
+            <div style="margin-bottom: 10px; font-weight: bold; color: #00ff41; font-size: 16px;">Omni-Zwiadowca Rynkowy</div>
+            <input type="text" id="lambo-search-input" placeholder="np. intel, indeks, krypto, top..." autocomplete="off">
+            <div id="lambo-search-results"></div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        js_code = """
+        <script>
+        setTimeout(function() {
+            const doc = window.parent.document;
+            const btn = doc.getElementById('lambo-search-btn');
+            const searchUI = doc.getElementById('lambo-draggable-search');
+            const closeBtn = doc.getElementById('lambo-close-btn');
+            const input = doc.getElementById('lambo-search-input');
+            const resultsBox = doc.getElementById('lambo-search-results');
+            
+            // System kopiowania z fallbackiem
+            window.parent.lamboCopyTicker = function(text, element) {
+                const parentDoc = window.parent.document;
+                const textArea = parentDoc.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-999999px";
+                parentDoc.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    parentDoc.execCommand('copy');
+                } catch (err) {
+                    if (navigator.clipboard) navigator.clipboard.writeText(text);
+                }
+                parentDoc.body.removeChild(textArea);
+                
+                const oldHtml = element.innerHTML;
+                element.innerHTML = '<b style="color:#00ff41">SKOPIOWANO!</b>';
+                setTimeout(() => { element.innerHTML = oldHtml; }, 800);
+            };
+            
+            if(btn && !btn.dataset.initialized) {
+                btn.dataset.initialized = "true";
+                
+                const dict = {
+                    "złoto": "GC=F", "zloto": "GC=F", "gold": "GC=F",
+                    "srebro": "SI=F", "silver": "SI=F",
+                    "ropa": "CL=F", "ropa wti": "CL=F", "oil": "CL=F", "brent": "BZ=F",
+                    "miedź": "HG=F", "miedz": "HG=F", "copper": "HG=F",
+                    "gaz": "NG=F", "gaz ziemny": "NG=F",
+                    "platyna": "PL=F", "pallad": "PA=F",
+                    "pszenica": "ZW=F", "kukurydza": "ZC=F", "kawa": "KC=F",
+                    "dolar": "DX-Y.NYB", "dxy": "DX-Y.NYB",
+                    "obligacje 10y": "^TNX",
+                    "apple": "AAPL", "microsoft": "MSFT", "intel": "INTC",
+                    "nvidia": "NVDA", "tesla": "TSLA", "amazon": "AMZN",
+                    "meta": "META", "google": "GOOGL", "netflix": "NFLX",
+                    "amd": "AMD", "hewlett": "HPE", "hp": "HPQ",
+                    "bitcoin": "BTC-USD", "btc": "BTC-USD", "ethereum": "ETH-USD"
+                };
+
+                const indicesList = [
+                    { symbol: "^WIG20", name: "WIG 20 (Polska)" },
+                    { symbol: "^GSPC", name: "S&P 500 (USA)" },
+                    { symbol: "^IXIC", name: "NASDAQ Composite" },
+                    { symbol: "^NDX", name: "NASDAQ 100" },
+                    { symbol: "^DJI", name: "Dow Jones Industrial" },
+                    { symbol: "^RUT", name: "Russell 2000" },
+                    { symbol: "^GDAXI", name: "DAX (Niemcy)" },
+                    { symbol: "^FTSE", name: "FTSE 100 (UK)" },
+                    { symbol: "^N225", name: "Nikkei 225 (Japonia)" }
+                ];
+
+                const volList = [
+                    { symbol: "^VIX", name: "VIX (S&P 500)" },
+                    { symbol: "^OVX", name: "OVX (Ropa Naftowa)" },
+                    { symbol: "^GVZ", name: "GVZ (Złoto)" },
+                    { symbol: "^VXN", name: "VXN (NASDAQ 100)" },
+                    { symbol: "^VXD", name: "VXD (Dow Jones)" },
+                    { symbol: "^RVX", name: "RVX (Russell 2000)" },
+                    { symbol: "^EVZ", name: "EVZ (Euro FX)" },
+                    { symbol: "^VXEEM", name: "VXEEM (Rynki Wschodzące)" }
+                ];
+
+                const cryptoList = [
+                    { symbol: "BTC-USD", name: "Bitcoin" },
+                    { symbol: "ETH-USD", name: "Ethereum" },
+                    { symbol: "SOL-USD", name: "Solana" },
+                    { symbol: "BNB-USD", name: "BNB" },
+                    { symbol: "XRP-USD", name: "XRP" },
+                    { symbol: "ADA-USD", name: "Cardano" },
+                    { symbol: "DOGE-USD", name: "Dogecoin" }
+                ];
+
+                const forexList = [
+                    { symbol: "EURPLN=X", name: "EUR/PLN" },
+                    { symbol: "USDPLN=X", name: "USD/PLN" },
+                    { symbol: "CHFPLN=X", name: "CHF/PLN" },
+                    { symbol: "GBPPLN=X", name: "GBP/PLN" },
+                    { symbol: "EURUSD=X", name: "EUR/USD" },
+                    { symbol: "GBPUSD=X", name: "GBP/USD" },
+                    { symbol: "USDJPY=X", name: "USD/JPY" }
+                ];
+
+                const etfList = [
+                    { symbol: "SPY", name: "SPDR S&P 500 ETF" },
+                    { symbol: "QQQ", name: "Invesco QQQ (Nasdaq 100)" },
+                    { symbol: "DIA", name: "SPDR Dow Jones Industrial" },
+                    { symbol: "IWM", name: "iShares Russell 2000" },
+                    { symbol: "GLD", name: "SPDR Gold Shares" },
+                    { symbol: "SLV", name: "iShares Silver Trust" },
+                    { symbol: "USO", name: "United States Oil Fund" }
+                ];
+                
+                let isDraggingMovement = false;
+                
+                btn.addEventListener('click', (e) => {
+                    if (isDraggingMovement) return;
+                    searchUI.style.display = searchUI.style.display === 'block' ? 'none' : 'block';
+                    if (searchUI.style.display === 'block') input.focus();
+                });
+                
+                closeBtn.addEventListener('click', () => {
+                    searchUI.style.display = 'none';
+                });
+                
+                function makeDraggable(element, handle) {
+                    let isDragging = false;
+                    let initialX, initialY;
+                    let currentX, currentY;
+                    let xOffset = 0, yOffset = 0;
+
+                    handle.addEventListener("mousedown", dragStart);
+                    doc.addEventListener("mouseup", dragEnd);
+                    doc.addEventListener("mousemove", drag);
+
+                    function dragStart(e) {
+                        initialX = e.clientX - xOffset;
+                        initialY = e.clientY - yOffset;
+                        if (e.target === handle || handle.contains(e.target)) {
+                            isDragging = true;
+                            isDraggingMovement = false;
+                        }
+                    }
+                    function dragEnd(e) {
+                        initialX = currentX;
+                        initialY = currentY;
+                        isDragging = false;
+                        setTimeout(() => { isDraggingMovement = false; }, 50);
+                    }
+                    function drag(e) {
+                        if (isDragging) {
+                            e.preventDefault();
+                            isDraggingMovement = true;
+                            currentX = e.clientX - initialX;
+                            currentY = e.clientY - initialY;
+                            xOffset = currentX;
+                            yOffset = currentY;
+                            element.style.transform = "translate3d(" + currentX + "px, " + currentY + "px, 0)";
+                        }
+                    }
+                }
+                
+                makeDraggable(btn, btn);
+                makeDraggable(searchUI, searchUI);
+                
+                let timeout = null;
+                input.addEventListener('keyup', (e) => {
+                    clearTimeout(timeout);
+                    const query = e.target.value.toLowerCase().trim();
+                    if(query.length < 2) {
+                        resultsBox.innerHTML = '';
+                        return;
+                    }
+                    
+                    timeout = setTimeout(async () => {
+                        resultsBox.innerHTML = '<div style="color:gray; font-style:italic;">Dron przeczesuje rynki...</div>';
+                        let resultsHTML = '';
+
+                        // --- 1. GORĄCE TRENDY (POMPA) ---
+                        if (['pompa', 'gorące', 'gorace', 'hot', 'trendy'].includes(query)) {
+                            resultsHTML += '<div style="margin-top: 5px; margin-bottom: 5px; color:#ff0055; font-size:11px; text-transform:uppercase;">🔥 Gorące Trendy (Yahoo Trending):</div>';
+                            try {
+                                const trendUrl = 'https://query2.finance.yahoo.com/v1/finance/trending/US';
+                                const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(trendUrl);
+                                const response = await fetch(proxyUrl);
+                                const data = await response.json();
+                                
+                                if (data && data.finance && data.finance.result && data.finance.result[0] && data.finance.result[0].quotes) {
+                                    const trending = data.finance.result[0].quotes;
+                                    trending.forEach(q => {
+                                        resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${q.symbol}', this)"><b>${q.symbol}</b> - 🔥 Na fali <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                                    });
+                                } else {
+                                    resultsHTML += '<div style="color:#ff0055; font-style:italic;">Dron nie znalazł aktywnych trendów.</div>';
+                                }
+                            } catch(err) {
+                                resultsHTML += '<div style="color:#ff0055; font-style:italic;">Błąd połączenia z radarem trendów. Yahoo odrzuca zapytanie.</div>';
+                            }
+                            resultsBox.innerHTML = resultsHTML;
+                            return; 
+                        }
+
+                        // --- 2. TOP ZYSKI I WOLUMEN AKCJI ---
+                        if (['top', 'najlepsze', 'zysk', 'gainers', 'aktywne', 'wolumen', 'actives'].includes(query)) {
+                            let type = ['aktywne', 'wolumen', 'actives'].includes(query) ? 'most_actives' : 'day_gainers';
+                            let title = type === 'most_actives' ? '🌊 Największy wolumen (Yahoo)' : '🚀 Największe wzrosty (Yahoo)';
+                            resultsHTML += `<div style="margin-top: 5px; margin-bottom: 5px; color:#00ff41; font-size:11px; text-transform:uppercase;">${title}:</div>`;
+                            try {
+                                const url = `https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&lang=en-US&region=US&scrIds=${type}&count=15`;
+                                const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+                                const response = await fetch(proxyUrl);
+                                const data = await response.json();
+                                
+                                if (data && data.finance && data.finance.result && data.finance.result[0] && data.finance.result[0].quotes) {
+                                    const quotes = data.finance.result[0].quotes;
+                                    quotes.forEach(q => {
+                                        let extra = type === 'most_actives' ? 
+                                            (q.regularMarketVolume ? 'Vol: ' + (q.regularMarketVolume / 1000000).toFixed(1) + 'M' : '') : 
+                                            (q.regularMarketChangePercent ? '+' + q.regularMarketChangePercent.toFixed(2) + '%' : '');
+                                        let name = q.shortname ? q.shortname.substring(0, 15) + '...' : '';
+                                        resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${q.symbol}', this)"><b>${q.symbol}</b> <span style="color:#aaa; font-size:10px; margin-left:5px;">${name}</span> <span style="color:#00ff41; font-weight:bold; margin-left:5px;">${extra}</span> <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                                    });
+                                } else {
+                                    throw new Error("Brak danych");
+                                }
+                            } catch(err) { 
+                                resultsHTML += `<div style="color:#ff0055; font-style:italic;">Yahoo blokuje ten skaner. Wpisz hasło 'pompa' aby sprawdzić trendy, lub poczekaj na odblokowanie API.</div>`;
+                            }
+                            resultsBox.innerHTML = resultsHTML;
+                            return; 
+                        }
+
+                        // --- 3. TOP KRYPTO (NAJWIĘKSZE ZYSKI - BINANCE) ---
+                        if (['top krypto', 'najlepsze krypto'].includes(query)) {
+                            resultsHTML += '<div style="margin-top: 5px; margin-bottom: 5px; color:#f7931a; font-size:11px; text-transform:uppercase;">🏆 Top Zyski Krypto (Binance 24h):</div>';
+                            try {
+                                const url = 'https://api.binance.com/api/v3/ticker/24hr';
+                                const response = await fetch(url);
+                                const data = await response.json();
+                                
+                                // Sortowanie wg ZYSKU (priceChangePercent) dla monet o wolumenie > 5M USDT (żeby odsiać śmieci)
+                                let topKrypto = data.filter(d => d.symbol.endsWith('USDT') && parseFloat(d.quoteVolume) > 5000000)
+                                                    .sort((a,b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
+                                                    .slice(0, 15);
+                                                    
+                                topKrypto.forEach(q => {
+                                    let symbolYf = q.symbol.replace('USDT', '-USD');
+                                    let changeVal = parseFloat(q.priceChangePercent);
+                                    let change = (changeVal > 0 ? '+' : '') + changeVal.toFixed(2) + '%';
+                                    let color = changeVal > 0 ? '#00ff41' : '#ff0055';
+                                    resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${symbolYf}', this)"><b>${symbolYf}</b> <span style="color:${color}; font-weight:bold; margin-left:10px;">${change}</span> <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                                });
+                            } catch(err) { 
+                                resultsHTML += `<div style="color:#ff0055; font-style:italic;">Błąd połączenia z siecią Binance.</div>`;
+                            }
+                            resultsBox.innerHTML = resultsHTML;
+                            return; 
+                        }
+
+                        // --- STATYCZNE LISTY ---
+                        if (query === 'index' || query === 'indeks' || query === 'indeksy') {
+                            resultsHTML += '<div style="margin-top: 5px; margin-bottom: 5px; color:#aaa; font-size:11px; text-transform:uppercase;">Główne Indeksy Światowe:</div>';
+                            indicesList.forEach(item => {
+                                resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${item.symbol}', this)"><b>${item.symbol}</b> - ${item.name} <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                            });
+                            resultsBox.innerHTML = resultsHTML;
+                            return; 
+                        }
+
+                        if (query === 'vix' || query === 'strach' || query === 'zmienność' || query === 'zmiennosc') {
+                            resultsHTML += '<div style="margin-top: 5px; margin-bottom: 5px; color:#aaa; font-size:11px; text-transform:uppercase;">Indeksy Zmienności (Strachu):</div>';
+                            volList.forEach(item => {
+                                resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${item.symbol}', this)"><b>${item.symbol}</b> - ${item.name} <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                            });
+                            resultsBox.innerHTML = resultsHTML;
+                            return; 
+                        }
+
+                        if (query === 'krypto' || query === 'kryptowaluty' || query === 'crypto') {
+                            resultsHTML += '<div style="margin-top: 5px; margin-bottom: 5px; color:#aaa; font-size:11px; text-transform:uppercase;">Główne Kryptowaluty:</div>';
+                            cryptoList.forEach(item => {
+                                resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${item.symbol}', this)"><b>${item.symbol}</b> - ${item.name} <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                            });
+                            resultsBox.innerHTML = resultsHTML;
+                            return; 
+                        }
+
+                        if (query === 'waluty' || query === 'forex' || query === 'fx' || query === 'waluta') {
+                            resultsHTML += '<div style="margin-top: 5px; margin-bottom: 5px; color:#aaa; font-size:11px; text-transform:uppercase;">Główne Pary Walutowe (Forex):</div>';
+                            forexList.forEach(item => {
+                                resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${item.symbol}', this)"><b>${item.symbol}</b> - ${item.name} <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                            });
+                            resultsBox.innerHTML = resultsHTML;
+                            return; 
+                        }
+
+                        if (query === 'etf' || query === 'etfy') {
+                            resultsHTML += '<div style="margin-top: 5px; margin-bottom: 5px; color:#aaa; font-size:11px; text-transform:uppercase;">Najpopularniejsze ETF-y:</div>';
+                            etfList.forEach(item => {
+                                resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${item.symbol}', this)"><b>${item.symbol}</b> - ${item.name} <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                            });
+                            resultsBox.innerHTML = resultsHTML;
+                            return; 
+                        }
+                        
+                        // --- SŁOWNIK LOKALNY ---
+                        for (const [key, value] of Object.entries(dict)) {
+                            if (key.includes(query) || value.toLowerCase().includes(query)) {
+                                resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${value}', this)"><b>${value}</b> - ${key} <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                            }
+                        }
+                        
+                        // --- WYSZUKIWANIE OGÓLNE YAHOO ---
+                        try {
+                            const yfUrl = 'https://query2.finance.yahoo.com/v1/finance/search?q=' + encodeURIComponent(query);
+                            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(yfUrl);
+                            
+                            const response = await fetch(proxyUrl);
+                            const data = await response.json();
+                            
+                            if(data && data.quotes) {
+                                const validQuotes = data.quotes.filter(q => q.symbol);
+                                
+                                if (validQuotes.length > 0) {
+                                    resultsHTML += '<div style="margin-top: 10px; margin-bottom: 5px; color:#aaa; font-size:10px; text-transform:uppercase;">Rynki globalne (Yahoo Wszystkie Aktywa):</div>';
+                                }
+                                
+                                validQuotes.forEach(q => {
+                                    let exch = q.exchDisp ? `(${q.exchDisp})` : '';
+                                    let typeDisp = q.quoteType ? `[${q.quoteType}]` : '';
+                                    let name = q.shortname || q.longname || "Brak nazwy (Czysty Ticker)";
+                                    let safeName = name.replace(/'/g, "").replace(/"/g, "");
+                                    
+                                    resultsHTML += `<div class="lambo-result-item" onclick="window.lamboCopyTicker('${q.symbol}', this)"><b>${q.symbol}</b> - ${name} <span style="color:#666; font-size:10px;">${exch} ${typeDisp}</span> <span style="float:right; font-size:10px; color:#00ff41;">[Kopiuj]</span></div>`;
+                                });
+                            }
+                        } catch(err) {
+                            console.log("Dron napotkał zaporę", err);
+                        }
+                        
+                        if(resultsHTML === '') {
+                            resultsHTML = '<div style="color:#ff0055; font-style:italic;">Dron nie znalazł wyników w globalnej bazie. Spróbuj innej frazy.</div>';
+                        }
+                        resultsBox.innerHTML = resultsHTML;
+                    }, 600);
+                });
+            }
+        }, 1000);
+        </script>
+        """
+        components.html(js_code, height=0, width=0)
+
+    @st.fragment
+    def render_opiekun_hud(self):
+        """
+        Renderuje "Baze Celów" (Opiekuna) w formie przeciąganych, półprzezroczystych napisów (HUD).
+        Wersja Neonowa: wyświetla wartość Fear & Greed przed tickerem,
+        zmniejszono grubość czcionek dla lepszej czytelności i zwiększono limit do 20 tickerów.
+        """
+        import streamlit.components.v1 as components
+        import streamlit as st
+        
+        st.markdown("""
+        <style>
+        #lambo-opiekun-btn {
+            position: fixed;
+            bottom: 130px; 
+            right: 20px;
+            z-index: 9999998;
+            background: #00d2ff;
+            color: black;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 50px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(0, 210, 255, 0.5);
+            user-select: none;
+            transition: background 0.2s;
+        }
+        #lambo-opiekun-btn:hover {
+            background: #00a8cc;
+        }
+        #lambo-opiekun-panel {
+            position: fixed;
+            bottom: 180px;
+            right: 20px;
+            z-index: 9999999;
+            background: rgba(14, 17, 23, 0.95);
+            border: 2px solid #00d2ff;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
+            color: white;
+            font-family: Arial, sans-serif;
+            width: 320px;
+            display: none;
+        }
+        .opiekun-input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            background: #000;
+            border: 1px solid #555;
+            color: #00d2ff;
+            border-radius: 5px;
+            font-weight: bold;
+            outline: none;
+        }
+        #opiekun-add-btn {
+            width: 100%;
+            padding: 8px;
+            background: #00d2ff;
+            color: black;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #opiekun-add-btn:hover { background: #00a8cc; }
+        #lambo-hud-container {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; 
+            z-index: 9999997;
+        }
+        .mini-dron {
+            position: absolute;
+            pointer-events: auto; 
+            color: white; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-weight: 500; /* Zmniejszona grubość z 900 na 500 */
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            cursor: move;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: transform 0.1s, opacity 0.2s;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            opacity: 0.85; 
+        }
+        .mini-dron:hover { 
+            opacity: 1.0; 
+        }
+        .mini-dron:active { transform: scale(0.95); }
+        .dron-close {
+            cursor: pointer;
+            color: rgba(255,255,255,0.4);
+            font-size: 12px;
+            text-shadow: none;
+            margin-left: -4px;
+        }
+        .dron-close:hover { color: #ff0055; text-shadow: 0 0 5px #ff0055; }
+        .dron-note {
+            display: none;
+            position: absolute;
+            bottom: -22px;
+            left: 0;
+            background: rgba(0,0,0,0.8);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            color: #ddd;
+            text-shadow: none;
+            border: 1px solid #444;
+        }
+        .mini-dron:hover .dron-note { display: block; }
+        
+        .neon-number {
+            font-size: 1.15em;
+            font-weight: 600; /* Zmniejszona grubość z 900 na 600 */
+            letter-spacing: 1px;
+        }
+        .hud-label {
+            font-size: 0.75em;
+            opacity: 0.6;
+            margin-right: 2px;
+            font-weight: normal;
+            text-shadow: 1px 1px 2px black;
+        }
+        </style>
+        
+        <div id="lambo-opiekun-btn">🛡️ Baza Celów</div>
+        
+        <div id="lambo-opiekun-panel">
+            <span id="opiekun-close-btn" style="float:right; cursor:pointer; color:#ff0055; font-weight:bold;">✖</span>
+            <div style="margin-bottom: 10px; font-weight: bold; color: #00d2ff; font-size: 16px;">Dodaj Cel Snajperski (Max 20)</div>
+            <input type="text" id="opiekun-ticker" class="opiekun-input" placeholder="Ticker (np. LUNR, AAPL)..." autocomplete="off">
+            <input type="text" id="opiekun-note" class="opiekun-input" placeholder="Notatka (np. czeka na fale 5)..." autocomplete="off">
+            <button id="opiekun-add-btn">➕ Rozpocznij Obserwację</button>
+        </div>
+        
+        <div id="lambo-hud-container"></div>
+        """, unsafe_allow_html=True)
+        
+        js_code = """
+        <script>
+        setTimeout(function() {
+            const doc = window.parent.document;
+            const btn = doc.getElementById('lambo-opiekun-btn');
+            const panel = doc.getElementById('lambo-opiekun-panel');
+            const closeBtn = doc.getElementById('opiekun-close-btn');
+            const addBtn = doc.getElementById('opiekun-add-btn');
+            const inputTicker = doc.getElementById('opiekun-ticker');
+            const inputNote = doc.getElementById('opiekun-note');
+            const hudContainer = doc.getElementById('lambo-hud-container');
+            
+            if(btn && !btn.dataset.initialized) {
+                btn.dataset.initialized = "true";
+                
+                let targets = JSON.parse(localStorage.getItem('lambo_opiekun_targets')) || [];
+                
+                btn.addEventListener('click', () => {
+                    panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+                });
+                closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+                
+                function calculateRSI(closes, period=14) {
+                    if(closes.length < period + 1) return 50;
+                    let gains = 0, losses = 0;
+                    for(let i = closes.length - period; i < closes.length; i++) {
+                        let diff = closes[i] - closes[i-1];
+                        if(diff > 0) gains += diff;
+                        else losses -= diff;
+                    }
+                    let avgGain = gains / period;
+                    let avgLoss = losses / period;
+                    if(avgLoss === 0) return 100;
+                    let rs = avgGain / avgLoss;
+                    return 100 - (100 / (1 + rs));
+                }
+                
+                function calculateSMA(closes, period=20) {
+                    if(closes.length < period) return closes[closes.length-1];
+                    let sum = 0;
+                    for(let i = closes.length - period; i < closes.length; i++) sum += closes[i];
+                    return sum / period;
+                }
+                
+                function getGreedColor(greedIndex) {
+                    if(greedIndex < 50) {
+                        let ratio = greedIndex / 50; 
+                        let r = Math.round(0 + ratio * 120);
+                        let g = Math.round(255 - ratio * 135);
+                        let b = Math.round(65 + ratio * 55);
+                        return `rgb(${r}, ${g}, ${b})`;
+                    } else {
+                        let ratio = (greedIndex - 50) / 50; 
+                        let r = Math.round(120 + ratio * 135);
+                        let g = Math.round(120 - ratio * 120);
+                        let b = Math.round(120 - ratio * 120);
+                        return `rgb(${r}, ${g}, ${b})`;
+                    }
+                }
+                
+                function makeDronDraggable(el, targetObj) {
+                    let isDragging = false;
+                    let currentX = targetObj.x || 50;
+                    let currentY = targetObj.y || 50;
+                    let initialX, initialY, xOffset = currentX, yOffset = currentY;
+                    
+                    el.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+
+                    el.addEventListener("mousedown", dragStart);
+                    doc.addEventListener("mouseup", dragEnd);
+                    doc.addEventListener("mousemove", drag);
+
+                    function dragStart(e) {
+                        if(e.target.classList.contains('dron-close')) return;
+                        initialX = e.clientX - xOffset;
+                        initialY = e.clientY - yOffset;
+                        isDragging = true;
+                    }
+                    function dragEnd(e) {
+                        if(!isDragging) return;
+                        initialX = currentX;
+                        initialY = currentY;
+                        isDragging = false;
+                        
+                        let idx = targets.findIndex(t => t.ticker === targetObj.ticker);
+                        if(idx > -1) {
+                            targets[idx].x = currentX;
+                            targets[idx].y = currentY;
+                            localStorage.setItem('lambo_opiekun_targets', JSON.stringify(targets));
+                        }
+                    }
+                    function drag(e) {
+                        if (isDragging) {
+                            e.preventDefault();
+                            currentX = e.clientX - initialX;
+                            currentY = e.clientY - initialY;
+                            xOffset = currentX;
+                            yOffset = currentY;
+                            el.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+                        }
+                    }
+                }
+                
+                async function renderDrones() {
+                    hudContainer.innerHTML = '';
+                    
+                    for(let target of targets) {
+                        let dron = doc.createElement('div');
+                        dron.className = 'mini-dron';
+                        dron.style.textShadow = "2px 2px 4px rgba(0,0,0,0.9)";
+                        dron.innerHTML = `<span>⏳ ${target.ticker}</span><span class="dron-close">✖</span><div class="dron-note">${target.note}</div>`;
+                        hudContainer.appendChild(dron);
+                        
+                        makeDronDraggable(dron, target);
+                        
+                        dron.querySelector('.dron-close').addEventListener('click', () => {
+                            targets = targets.filter(t => t.ticker !== target.ticker);
+                            localStorage.setItem('lambo_opiekun_targets', JSON.stringify(targets));
+                            dron.remove();
+                        });
+                        
+                        try {
+                            const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${target.ticker}?range=60d&interval=1d`;
+                            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(yfUrl);
+                            const response = await fetch(proxyUrl);
+                            const data = await response.json();
+                            
+                            if(data.chart.result && data.chart.result[0].indicators.quote[0].close) {
+                                let closes = data.chart.result[0].indicators.quote[0].close.filter(c => c !== null);
+                                let price = closes[closes.length - 1];
+                                
+                                let rsi = calculateRSI(closes, 14);
+                                let sma = calculateSMA(closes, 20);
+                                
+                                let diffPercent = ((price - sma) / sma) * 100;
+                                let smaScore = ((diffPercent + 15) / 30) * 100; 
+                                smaScore = Math.max(0, Math.min(100, smaScore));
+                                
+                                let greedIndex = (rsi * 0.6) + (smaScore * 0.4);
+                                let color = getGreedColor(greedIndex);
+                                let greedVal = Math.round(greedIndex);
+                                
+                                dron.style.color = color;
+                                dron.style.textShadow = `0 0 8px ${color}, 0 0 15px ${color}, 2px 2px 5px rgba(0,0,0,1), -1px -1px 3px rgba(0,0,0,1)`;
+                                
+                                let formattedPrice = price < 10 ? price.toFixed(4) : price.toFixed(2);
+                                
+                                dron.innerHTML = `
+                                    <span>
+                                        <span class="hud-label">F&G:</span><span class="neon-number">${greedVal}</span> 
+                                        &nbsp;&nbsp; ${target.ticker} &nbsp;&nbsp; 
+                                        <span class="hud-label">$</span><span class="neon-number">${formattedPrice}</span>
+                                    </span>
+                                    <span class="dron-close">✖</span>
+                                    <div class="dron-note">${target.note}</div>
+                                `;
+                                
+                                dron.querySelector('.dron-close').addEventListener('click', () => {
+                                    targets = targets.filter(t => t.ticker !== target.ticker);
+                                    localStorage.setItem('lambo_opiekun_targets', JSON.stringify(targets));
+                                    dron.remove();
+                                });
+                            }
+                        } catch (err) {
+                            dron.style.color = '#999999';
+                            dron.style.textShadow = "2px 2px 4px rgba(0,0,0,0.9)";
+                            dron.innerHTML = `<span>❌ ${target.ticker} (API Err)</span><span class="dron-close">✖</span>`;
+                            dron.querySelector('.dron-close').addEventListener('click', () => {
+                                targets = targets.filter(t => t.ticker !== target.ticker);
+                                localStorage.setItem('lambo_opiekun_targets', JSON.stringify(targets));
+                                dron.remove();
+                            });
+                        }
+                    }
+                }
+                
+                addBtn.addEventListener('click', () => {
+                    // Blokada 20 sztuk
+                    if(targets.length >= 20) {
+                        alert("⚠️ Osiągnięto maksymalny limit celów (20). Usuń stary cel, aby dodać nowy.");
+                        return;
+                    }
+                    
+                    let t = inputTicker.value.toUpperCase().trim();
+                    let n = inputNote.value.trim();
+                    if(t.length > 0) {
+                        if(!targets.find(x => x.ticker === t)) {
+                            targets.push({ ticker: t, note: n, x: window.innerWidth/2, y: window.innerHeight/2 });
+                            localStorage.setItem('lambo_opiekun_targets', JSON.stringify(targets));
+                            renderDrones();
+                        } else {
+                            alert("⚠️ Ten ticker jest już obserwowany!");
+                        }
+                        inputTicker.value = '';
+                        inputNote.value = '';
+                        panel.style.display = 'none';
+                    }
+                });
+                
+                renderDrones();
+                setInterval(renderDrones, 3600000);
+            }
+        }, 1200);
+        </script>
+        """
+        components.html(js_code, height=0, width=0)
+
+    @st.fragment
+    def render_wyrocznia_ai(self):
+        """
+        Sekcja Wyroczni AI (Kompleksowy Silnik Predykcyjny 4D).
+        1. Prophet (Czas i Sezonowość)
+        2. Macierz Fraktalna (Podobieństwo Historyczne)
+        3. Monte Carlo (Symulacja Prawdopodobieństwa i Ryzyka - 1000 iteracji)
+        4. XGBoost (Drzewa decyzyjne - AI Prawdopodobieństwo Kierunku)
+        Naprawiono wyciek danych (Target Leakage) w modelu XGBoost powodujący fałszywe przewidywania spadków.
+        """
+        import streamlit as st
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        from datetime import timedelta
+        
+        st.markdown("<h3 style='color: #00d2ff;'>🔮 Wyrocznia AI (Kombajn Predykcyjny Wall Street)</h3>", unsafe_allow_html=True)
+        st.write("Czterowarstwowa analiza: Cykle (Prophet), Geometria (Fraktale), Prawdopodobieństwo (Monte Carlo) oraz AI (XGBoost).")
+        
+        missing_libs = []
+        try:
+            from prophet import Prophet
+        except ImportError:
+            missing_libs.append("prophet")
+        try:
+            from scipy.stats import norm
+        except ImportError:
+            missing_libs.append("scipy")
+        try:
+            import xgboost as xgb
+        except ImportError:
+            missing_libs.append("xgboost")
+            
+        if missing_libs:
+            st.error(f"❌ Brakujące biblioteki: {', '.join(missing_libs)}. Otwórz terminal i wpisz: pip install prophet scipy xgboost scikit-learn")
+            return
+            
+        with st.form(key="oracle_form"):
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                ticker = st.text_input("Wprowadź Ticker (np. TSLA, GC=F, BTC-USD):").upper().strip()
+            with col2:
+                days_to_predict = st.selectbox("Horyzont prognozy (Dni):", [7, 14, 30, 60], index=1)
+                
+            submit_btn = st.form_submit_button("🔮 Rozpocznij Symulację Całkowitą")
+            
+        if submit_btn:
+            if not ticker:
+                st.warning("Najpierw wprowadź ticker!")
+                return
+                
+            with st.spinner(f"Drony skanują rynki, trenują AI i wyliczają 1000 symulacji dla {ticker}... To potężna matematyka, daj im chwilę."):
+                try:
+                    data = yf.download(ticker, period="5y", progress=False)
+                    
+                    if data.empty:
+                        st.error(f"Nie znaleziono danych rynkowych dla tickera {ticker}.")
+                        return
+                        
+                    if isinstance(data.columns, pd.MultiIndex):
+                        close_col = data['Close'][ticker] if ticker in data['Close'] else data['Close'].iloc[:, 0]
+                    else:
+                        close_col = data['Close']
+                        
+                    close_col = close_col.dropna()
+                    current_price = close_col.iloc[-1]
+                    
+                    # ==========================================
+                    # 1. WYROCZNIA PROPHET (Czas i Cykle)
+                    # ==========================================
+                    df_prophet = pd.DataFrame({'ds': close_col.index, 'y': close_col.values})
+                    if df_prophet['ds'].dt.tz is not None:
+                        df_prophet['ds'] = df_prophet['ds'].dt.tz_localize(None)
+                        
+                    m = Prophet(daily_seasonality=False, yearly_seasonality=True, weekly_seasonality=False)
+                    m.fit(df_prophet)
+                    
+                    future = m.make_future_dataframe(periods=days_to_predict)
+                    forecast = m.predict(future)
+                    
+                    fig1, ax1 = plt.subplots(figsize=(14, 6))
+                    fig1.patch.set_facecolor('#0E1117')
+                    ax1.set_facecolor('#0E1117')
+                    
+                    history_plot = df_prophet.tail(100)
+                    ax1.plot(history_plot['ds'], history_plot['y'], color='#00ff41', linewidth=2, label='Cena Historyczna')
+                    
+                    last_hist_date = history_plot['ds'].iloc[-1]
+                    last_hist_price = history_plot['y'].iloc[-1]
+                    future_forecast = forecast.tail(days_to_predict)
+                    
+                    concat_dates = [last_hist_date] + future_forecast['ds'].tolist()
+                    concat_yhat = [last_hist_price] + future_forecast['yhat'].tolist()
+                    concat_lower = [last_hist_price] + future_forecast['yhat_lower'].tolist()
+                    concat_upper = [last_hist_price] + future_forecast['yhat_upper'].tolist()
+                    
+                    ax1.plot(concat_dates, concat_yhat, color='#00d2ff', linestyle='--', linewidth=2, label=f'Prognoza Prophet ({days_to_predict} dni)')
+                    ax1.fill_between(concat_dates, concat_lower, concat_upper, color='#00d2ff', alpha=0.25, label='Korytarz Prawdopodobieństwa')
+                    ax1.scatter([last_hist_date], [last_hist_price], color='#ffffff', s=50, zorder=5)
+                    
+                    ax1.tick_params(colors='white')
+                    for spine in ax1.spines.values():
+                        spine.set_color('#555555')
+                        
+                    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+                    ax1.tick_params(axis='x', rotation=45)
+                    ax1.grid(color='#333333', linestyle='-', linewidth=0.5)
+                    ax1.legend(facecolor='#0E1117', edgecolor='#555555', labelcolor='white', loc='upper left')
+                    ax1.set_title(f"1. Prophet AI: Kierunek Trendu i Sezonowość ({ticker})", color='white', fontsize=16, fontweight='bold')
+                    fig1.tight_layout()
+                    st.pyplot(fig1)
+                    
+                    # ==========================================
+                    # 2. MACIERZ FRAKTALNA (Podobieństwo)
+                    # ==========================================
+                    pattern_window = 30
+                    closes = close_col.values
+                    dates = close_col.index
+                    
+                    if len(closes) >= pattern_window * 3:
+                        current_slice = closes[-pattern_window:]
+                        current_norm = current_slice / current_slice[0]
+                        
+                        patterns = []
+                        for i in range(len(closes) - pattern_window - days_to_predict):
+                            hist_slice = closes[i : i + pattern_window]
+                            hist_norm = hist_slice / hist_slice[0]
+                            error = np.sum(np.abs(current_norm - hist_norm))
+                            patterns.append((error, i))
+                            
+                        patterns.sort(key=lambda x: x[0])
+                        top_5_patterns = patterns[:5]
+                        
+                        fig2, ax2 = plt.subplots(figsize=(14, 6))
+                        fig2.patch.set_facecolor('#0E1117')
+                        ax2.set_facecolor('#0E1117')
+                        
+                        hist_100_dates = dates[-100:]
+                        hist_100_closes = closes[-100:]
+                        ax2.plot(hist_100_dates, hist_100_closes, color='#00ff41', linewidth=2, label='Obecna Cena')
+                        ax2.scatter([dates[-1]], [closes[-1]], color='#ffffff', s=50, zorder=5)
+                        
+                        future_dates = [dates[-1] + timedelta(days=x) for x in range(1, days_to_predict + 1)]
+                        projected_paths = []
+                        
+                        for rank, (err, idx) in enumerate(top_5_patterns):
+                            future_hist_slice = closes[idx + pattern_window - 1 : idx + pattern_window + days_to_predict]
+                            factor = closes[-1] / future_hist_slice[0]
+                            adjusted_future = future_hist_slice * factor
+                            plot_future = adjusted_future[1:]
+                            projected_paths.append(plot_future)
+                            
+                            hist_date_start = dates[idx].strftime('%Y-%m')
+                            ax2.plot(future_dates[:len(plot_future)], plot_future, color='#ff0055', alpha=0.4, linewidth=1.5, label=f'Analog: {hist_date_start}' if rank < 3 else "")
+                                     
+                        if projected_paths:
+                            min_len = min(len(p) for p in projected_paths)
+                            consensus = np.mean([p[:min_len] for p in projected_paths], axis=0)
+                            cons_dates = [dates[-1]] + future_dates[:min_len]
+                            cons_values = [closes[-1]] + consensus.tolist()
+                            ax2.plot(cons_dates, cons_values, color='#ffcc00', linewidth=3, label='Konsensus Fraktalny (Średnia)')
+                            final_fractal_price = consensus[-1]
+                            
+                        ax2.tick_params(colors='white')
+                        for spine in ax2.spines.values():
+                            spine.set_color('#555555')
+                            
+                        ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+                        ax2.tick_params(axis='x', rotation=45)
+                        ax2.grid(color='#333333', linestyle='--', linewidth=0.5)
+                        ax2.legend(facecolor='#0E1117', edgecolor='#555555', labelcolor='white', loc='upper left')
+                        ax2.set_title(f"2. Macierz Fraktalna: Top 5 Analogii Historycznych", color='white', fontsize=16, fontweight='bold')
+                        fig2.tight_layout()
+                        st.pyplot(fig2)
+                        
+                    # ==========================================
+                    # 3. SYMULACJA MONTE CARLO (Ryzyko i Szok)
+                    # ==========================================
+                    log_returns = np.log(1 + close_col.pct_change()).dropna()
+                    u = log_returns.mean()
+                    var = log_returns.var()
+                    drift = u - (0.5 * var)
+                    stdev = log_returns.std()
+                    
+                    iterations = 1000
+                    daily_returns = np.exp(drift + stdev * norm.ppf(np.random.rand(days_to_predict, iterations)))
+                    
+                    S0 = current_price
+                    price_list = np.zeros_like(daily_returns)
+                    price_list[0] = S0
+                    for t in range(1, days_to_predict):
+                        price_list[t] = price_list[t - 1] * daily_returns[t]
+                        
+                    fig3, ax3 = plt.subplots(figsize=(14, 6))
+                    fig3.patch.set_facecolor('#0E1117')
+                    ax3.set_facecolor('#0E1117')
+                    
+                    ax3.plot(price_list, color='#9d00ff', alpha=0.03)
+                    
+                    mean_path = price_list.mean(axis=1)
+                    ax3.plot(mean_path, color='#ffffff', linewidth=3, label='Średnia Trajektoria (1000 Symulacji)')
+                    ax3.axhline(S0, color='#ff0055', linestyle='--', linewidth=2, label='Cena Początkowa (Linia Zero)')
+                    
+                    ax3.tick_params(colors='white')
+                    for spine in ax3.spines.values():
+                        spine.set_color('#555555')
+                        
+                    ax3.grid(color='#333333', linestyle='-', linewidth=0.5)
+                    ax3.legend(facecolor='#0E1117', edgecolor='#555555', labelcolor='white', loc='upper left')
+                    ax3.set_title(f"3. Monte Carlo: Chmura Prawdopodobieństwa (1000 alternatywnych ścieżek)", color='white', fontsize=16, fontweight='bold')
+                    fig3.tight_layout()
+                    st.pyplot(fig3)
+                    
+                    prob_higher = (price_list[-1] > S0).mean() * 100
+                    mc_final_mean = mean_path[-1]
+
+                    # ==========================================
+                    # 4. XGBOOST AI (Prawdopodobieństwo Wzrostu)
+                    # ==========================================
+                    df_xgb = pd.DataFrame({'Close': close_col})
+                    df_xgb['Returns'] = df_xgb['Close'].pct_change()
+                    
+                    sma_10 = df_xgb['Close'].rolling(window=10).mean()
+                    sma_50 = df_xgb['Close'].rolling(window=50).mean()
+                    df_xgb['Dist_SMA_10'] = (df_xgb['Close'] - sma_10) / sma_10
+                    df_xgb['Dist_SMA_50'] = (df_xgb['Close'] - sma_50) / sma_50
+                    
+                    df_xgb['Vol_14'] = df_xgb['Returns'].rolling(window=14).std()
+                    
+                    delta = df_xgb['Close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    rs = gain / loss
+                    df_xgb['RSI_14'] = 100 - (100 / (1 + rs))
+                    
+                    # Targetowanie: Czy cena za 'days_to_predict' będzie wyższa niż tego konkretnego dnia?
+                    df_xgb['Target'] = (df_xgb['Close'].shift(-days_to_predict) > df_xgb['Close']).astype(int)
+                    
+                    features = ['Returns', 'Dist_SMA_10', 'Dist_SMA_50', 'Vol_14', 'RSI_14']
+                    
+                    # Odcinamy najświeższe dni z treningu, ponieważ nie znamy dla nich jeszcze ostatecznego wyniku!
+                    # Zapobiega to fałszywym zerom (Target Leakage), które niszczyły werdykt AI.
+                    df_xgb_train = df_xgb.iloc[:-days_to_predict].dropna()
+                    
+                    X = df_xgb_train[features]
+                    y = df_xgb_train['Target']
+                    
+                    # Parametry regularyzacji (zapobiegają zbytniej pewności siebie modelu)
+                    model = xgb.XGBClassifier(
+                        eval_metric='logloss', 
+                        max_depth=3, 
+                        learning_rate=0.05, 
+                        n_estimators=100, 
+                        subsample=0.8, 
+                        colsample_bytree=0.8, 
+                        random_state=42
+                    )
+                    model.fit(X, y)
+                    
+                    # Pobieranie dzisiejszych wskaźników do wykonania predykcji przyszłości
+                    last_features = df_xgb[features].iloc[-1:]
+                    xgb_prob_up = model.predict_proba(last_features)[0][1] * 100
+                    
+                    fig4, ax4 = plt.subplots(figsize=(14, 4))
+                    fig4.patch.set_facecolor('#0E1117')
+                    ax4.set_facecolor('#0E1117')
+                    
+                    colors = ['#ff0055', '#00ff41'] if xgb_prob_up > 50 else ['#ff0055', '#333333']
+                    ax4.barh(['Spadek', 'Wzrost'], [100 - xgb_prob_up, xgb_prob_up], color=colors)
+                             
+                    ax4.set_xlim(0, 100)
+                    for i, v in enumerate([100 - xgb_prob_up, xgb_prob_up]):
+                        ax4.text(v + 1, i, f"{v:.1f}%", color='white', va='center', fontweight='bold', fontsize=14)
+                        
+                    ax4.tick_params(colors='white', labelsize=12)
+                    for spine in ax4.spines.values():
+                        spine.set_color('#0E1117')
+                        
+                    ax4.set_title(f"4. XGBoost AI: Szansa wzrostu za {days_to_predict} dni", color='white', fontsize=16, fontweight='bold')
+                    fig4.tight_layout()
+                    st.pyplot(fig4)
+
+                    # ==========================================
+                    # 5. OSTATECZNY WNIOSEK (ALGORYTM KONSENSUSU)
+                    # ==========================================
+                    last_row = forecast.iloc[-1]
+                    target_date = last_row['ds'].strftime('%Y-%m-%d')
+                    
+                    prophet_diff = ((last_row['yhat'] - current_price) / current_price) * 100
+                    prophet_score = max(0, min(100, 50 + (prophet_diff * 3.33))) 
+                    
+                    if 'final_fractal_price' in locals():
+                        frac_diff = ((final_fractal_price - current_price) / current_price) * 100
+                        frac_score = max(0, min(100, 50 + (frac_diff * 3.33)))
+                    else:
+                        frac_score = 50 
+                        
+                    mc_score = prob_higher
+                    xgb_score = xgb_prob_up
+                    
+                    final_verdict_prob_up = (prophet_score * 0.15) + (frac_score * 0.15) + (mc_score * 0.35) + (xgb_score * 0.35)
+                    
+                    st.markdown("---")
+                    st.success(f"**🔥 RAPORT TAKTYCZNY ORAZ OSTATECZNY WERDYKT ({target_date}) 🔥**")
+                    
+                    col_sum1, col_sum2 = st.columns(2)
+                    with col_sum1:
+                        st.info(f"🔮 **Prophet (Cykle):** Docelowo **${last_row['yhat']:.2f}**")
+                        if 'final_fractal_price' in locals():
+                            st.warning(f"🧬 **Fraktale (Historia):** Docelowo **${final_fractal_price:.2f}**")
+                    with col_sum2:
+                        st.error(f"🎲 **Monte Carlo (Statystyka):** Średnia z 1000 iteracji to **${mc_final_mean:.2f}**")
+                        st.markdown(f"<div style='padding: 15px; border-radius: 5px; border: 1px solid #333;'>🧠 **XGBoost AI:** Szansa na zysk bazując na wskaźnikach: <b>{xgb_prob_up:.1f}%</b></div>", unsafe_allow_html=True)
+                    
+                    if final_verdict_prob_up >= 50:
+                        verdict_color = "#00ff41"
+                        verdict_text = "WZROST 📈"
+                        display_prob = final_verdict_prob_up
+                    else:
+                        verdict_color = "#ff0055"
+                        verdict_text = "SPADEK 📉"
+                        display_prob = 100.0 - final_verdict_prob_up
+                    
+                    st.markdown(f"""
+                    <div style="text-align: center; margin-top: 20px; padding: 20px; background-color: #0E1117; border: 2px solid {verdict_color}; border-radius: 10px; box-shadow: 0 0 20px {verdict_color}40;">
+                        <h4 style="color: white; margin-bottom: 5px;">KONSENSUS OMNI-ZWIADOWCY</h4>
+                        <h1 style="color: {verdict_color}; font-size: 3rem; margin: 0; text-shadow: 0 0 10px {verdict_color};">
+                            {display_prob:.1f}% SZANS NA {verdict_text}
+                        </h1>
+                        <p style="color: #aaa; font-size: 12px; margin-top: 10px;">
+                            Matematyczna fuzja wagowa (XGBoost 35% | Monte Carlo 35% | Prophet 15% | Fraktale 15%)
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                except Exception as e:
+                    st.error(f"Błąd podczas generowania symulacji: {e}")
 
     @st.fragment
     def render_anomaly_hunter(self):
@@ -32722,8 +33859,11 @@ def main():
     app.render_wyckoff_greed_cockpit()
     app.render_wyckoff_target_matrix()
     app.render_catalyst_radar()
+    app.render_wyrocznia_ai()
     app.render_omni_comparator()
     app.render_anomaly_hunter()
+    app.render_floating_searcher()
+    app.render_opiekun_hud()
     app.display_bottom_ticker()
 
 # ==========================================================

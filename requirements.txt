@@ -26,3 +26,5 @@ pyTelegramBotAPI
 kaleido
 fpdf
 deep-translator
+xgboost
+scikit-learn
