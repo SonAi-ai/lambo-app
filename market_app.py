@@ -29637,6 +29637,360 @@ class MarketProbabilityIndex:
                     st.error(f"Błąd podczas generowania symulacji: {e}")
 
     @st.fragment
+    def render_ai_trader_syndicate(self):
+        """
+        Sekcja "Syndykat Traderów AI".
+        Uruchamia 3 niezależne modele XGBoost na niskich interwałach (Daytrading/Swing):
+        1. Bezduszny Scalper (Szansa na wzrost w następnej świecy)
+        2. Skaner Smart Money (Szansa na wzrost w perspektywie 3 świec bazując na anomaliach wolumenu)
+        3. Łowca Likwidacji (Szansa na gwałtowne, ponadwymiarowe wybicie - Short Squeeze)
+        Zawiera Tachometr Konsensusu, Mapę Likwidacji (Liq Map) oraz Profil Wolumenu (VRVP).
+        """
+        import streamlit as st
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        import xgboost as xgb
+        import base64
+        import os
+        
+        st.markdown("<h3 style='color: #ff0055;'>🏴‍☠️ Syndykat Traderów AI (XGBoost Daytrading)</h3>", unsafe_allow_html=True)
+        st.write("Trzy wyspecjalizowane modele sztucznej inteligencji skanujące mikro-strukturę rynku w poszukiwaniu przewagi taktycznej.")
+        
+        try:
+            import plotly.graph_objects as go
+        except ImportError:
+            st.error("❌ Biblioteka plotly nie jest zainstalowana. Otwórz terminal i wpisz: pip install plotly")
+            return
+            
+        st.markdown("""
+        <div style="background: rgba(255, 0, 85, 0.05); border-left: 3px solid #ff0055; padding: 12px; margin-bottom: 20px; font-size: 13px; border-radius: 0 5px 5px 0; line-height: 1.5;">
+            <b style="color: #ff0055; font-size: 14px;">🧠 Przewodnik Taktyczny po Modelach:</b><br>
+            • <b>Bezduszny Scalper:</b> Analizuje czyste momentum i skrajne wyprzedanie/wykupienie (RSI). Prognozuje kierunek wyłącznie dla <u>jednej, najbliższej świecy</u>. Narzędzie pod szybki skalping.<br>
+            • <b>Skaner Smart Money:</b> Tropi anomalie wolumenowe i ukryte zaangażowanie dużego kapitału. Prognozuje układ sił w horyzoncie <u>3 świec w przód</u>, ignorując chwilowy szum informacyjny.<br>
+            • <b>Łowca Likwidacji:</b> Mierzy nienaturalne rozciągnięcie zmienności względem pasma ATR. Ocenia szansę na <u>gwałtowny, ponadwymiarowy wystrzał ceny</u> (np. wywołany kaskadą likwidacji pozycji krótkich – Short Squeeze).
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.form(key="syndicate_form"):
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                ticker = st.text_input("Wprowadź Ticker (Akcje np. TSLA lub Krypto np. BTC-USD):", key="synd_ticker").upper().strip()
+            with col2:
+                interval = st.selectbox("Interwał czasowy (Świeca):", ["15m", "1h", "1d"], index=1)
+                
+            submit_btn = st.form_submit_button("🔥 Uruchom Syndykat AI")
+            
+        if submit_btn:
+            if not ticker:
+                st.warning("Najpierw wprowadź ticker!")
+                return
+                
+            with st.spinner(f"Syndykat pobiera dane {interval} i trenuje 3 niezależne modele XGBoost dla {ticker}..."):
+                try:
+                    if interval == "15m":
+                        period = "60d"
+                    elif interval == "1h":
+                        period = "730d"
+                    else:
+                        period = "2y"
+                        
+                    data = yf.download(ticker, period=period, interval=interval, progress=False)
+                    
+                    if data.empty:
+                        st.error(f"Nie znaleziono danych rynkowych dla {ticker} na interwale {interval}.")
+                        return
+                        
+                    if isinstance(data.columns, pd.MultiIndex):
+                        close_col = data['Close'][ticker] if ticker in data['Close'] else data['Close'].iloc[:, 0]
+                        high_col = data['High'][ticker] if ticker in data['High'] else data['High'].iloc[:, 0]
+                        low_col = data['Low'][ticker] if ticker in data['Low'] else data['Low'].iloc[:, 0]
+                        vol_col = data['Volume'][ticker] if ticker in data['Volume'] else data['Volume'].iloc[:, 0]
+                    else:
+                        close_col = data['Close']
+                        high_col = data['High']
+                        low_col = data['Low']
+                        vol_col = data['Volume']
+                        
+                    df = pd.DataFrame({
+                        'Close': close_col,
+                        'High': high_col,
+                        'Low': low_col,
+                        'Volume': vol_col
+                    }).dropna()
+                    
+                    # --- INŻYNIERIA CECH ---
+                    df['Returns'] = df['Close'].pct_change()
+                    df['TR'] = np.maximum((df['High'] - df['Low']), 
+                                          np.maximum(abs(df['High'] - df['Close'].shift(1)), 
+                                                     abs(df['Low'] - df['Close'].shift(1))))
+                    df['ATR'] = df['TR'].rolling(14).mean()
+                    
+                    df['Vol_SMA'] = df['Volume'].rolling(20).mean()
+                    df['Vol_Anomaly'] = df['Volume'] / df['Vol_SMA']
+                    
+                    sma_10 = df['Close'].rolling(window=10).mean()
+                    sma_50 = df['Close'].rolling(window=50).mean()
+                    df['Dist_SMA_10'] = (df['Close'] - sma_10) / sma_10
+                    df['Dist_SMA_50'] = (df['Close'] - sma_50) / sma_50
+                    
+                    delta = df['Close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    rs = gain / loss
+                    df['RSI_14'] = 100 - (100 / (1 + rs))
+                    
+                    # --- TARGETS ---
+                    df['Target_Scalp'] = (df['Close'].shift(-1) > df['Close']).astype(int)
+                    df['Target_SM'] = (df['Close'].shift(-3) > df['Close']).astype(int)
+                    df['Target_Squeeze'] = (df['Close'].shift(-1) > (df['Close'] + (df['ATR'] * 0.5))).astype(int)
+                    
+                    df_clean = df.dropna()
+                    features = ['Returns', 'ATR', 'Vol_Anomaly', 'Dist_SMA_10', 'Dist_SMA_50', 'RSI_14']
+                    
+                    last_features = df_clean[features].iloc[-1:]
+                    
+                    xgb_params = {
+                        'eval_metric': 'logloss',
+                        'max_depth': 3,
+                        'learning_rate': 0.05,
+                        'n_estimators': 150,
+                        'subsample': 0.8,
+                        'colsample_bytree': 0.8,
+                        'random_state': 42
+                    }
+                    
+                    # 1. SCALPER
+                    df_m1 = df_clean.iloc[:-1]
+                    m1 = xgb.XGBClassifier(**xgb_params)
+                    m1.fit(df_m1[features], df_m1['Target_Scalp'])
+                    prob_scalp = m1.predict_proba(last_features)[0][1] * 100
+                    
+                    # 2. SMART MONEY
+                    df_m2 = df_clean.iloc[:-3]
+                    m2 = xgb.XGBClassifier(**xgb_params)
+                    m2.fit(df_m2[features], df_m2['Target_SM'])
+                    prob_sm = m2.predict_proba(last_features)[0][1] * 100
+                    
+                    # 3. SQUEEZE PREDICTOR
+                    df_m3 = df_clean.iloc[:-1]
+                    m3 = xgb.XGBClassifier(**xgb_params)
+                    m3.fit(df_m3[features], df_m3['Target_Squeeze'])
+                    prob_squeeze = m3.predict_proba(last_features)[0][1] * 100
+                    
+                    # --- RENDERY DASHBOARDU KART ---
+                    st.markdown("---")
+                    st.markdown(f"### 🎯 Raport Taktyczny: {ticker} (Interwał: {interval})")
+                    
+                    col_k1, col_k2, col_k3 = st.columns(3)
+                    
+                    with col_k1:
+                        color1 = "#00ff41" if prob_scalp >= 50 else "#ff0055"
+                        st.markdown(f"""
+                        <div style="background: #0E1117; padding: 15px; border-radius: 8px; border-top: 4px solid {color1}; text-align: center; height: 160px;">
+                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 14px;">1. Bezduszny Scalper</h5>
+                            <div style="font-size: 11px; color: #888; margin-bottom: 10px;">Szansa na wzrost (1 świeca)</div>
+                            <h2 style="color: {color1}; margin: 0; text-shadow: 0 0 5px {color1}60;">{prob_scalp:.1f}%</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col_k2:
+                        color2 = "#00d2ff" if prob_sm >= 50 else "#ff0055"
+                        st.markdown(f"""
+                        <div style="background: #0E1117; padding: 15px; border-radius: 8px; border-top: 4px solid {color2}; text-align: center; height: 160px;">
+                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 14px;">2. Skaner Smart Money</h5>
+                            <div style="font-size: 11px; color: #888; margin-bottom: 10px;">Szansa na wzrost (3 świece)</div>
+                            <h2 style="color: {color2}; margin: 0; text-shadow: 0 0 5px {color2}60;">{prob_sm:.1f}%</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col_k3:
+                        color3 = "#ffcc00" if prob_squeeze >= 25 else "#555"
+                        st.markdown(f"""
+                        <div style="background: #0E1117; padding: 15px; border-radius: 8px; border-top: 4px solid {color3}; text-align: center; height: 160px;">
+                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 14px;">3. Łowca Likwidacji</h5>
+                            <div style="font-size: 11px; color: #888; margin-bottom: 10px;">Szansa na Short Squeeze</div>
+                            <h2 style="color: {color3}; margin: 0; text-shadow: 0 0 5px {color3}60;">{prob_squeeze:.1f}%</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    # --- KONSENSUS ---
+                    syndicate_score = (prob_scalp * 0.5) + (prob_sm * 0.5)
+                    
+                    if syndicate_score >= 55:
+                        verdict_color = "#00ff41"
+                        verdict_text = "ZIELONE ŚWIATŁO (LONG)"
+                        icon = "🟢"
+                    elif syndicate_score <= 45:
+                        verdict_color = "#ff0055"
+                        verdict_text = "CZERWONE ŚWIATŁO (SHORT)"
+                        icon = "🔴"
+                    else:
+                        verdict_color = "#aaaaaa"
+                        verdict_text = "STREFA CHAOSU (NO TRADE)"
+                        icon = "⚪"
+                        
+                    st.markdown(f"""
+                    <div style="text-align: center; margin-top: 25px; padding: 20px; background-color: #000000; border: 1px solid {verdict_color}; border-radius: 10px; margin-bottom: 15px;">
+                        <p style="color: #aaa; font-size: 12px; margin-bottom: 5px; letter-spacing: 1px;">OSTATECZNY WERDYKT SYNDYKATU</p>
+                        <h2 style="color: {verdict_color}; margin: 0; letter-spacing: 2px;">{icon} {verdict_text}</h2>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # ==========================================
+                    # KALKULACJE DLA VRVP ORAZ MAPY LIKWIDACJI
+                    # ==========================================
+                    recent_df = df_clean.tail(150).copy()
+                    current_price = recent_df['Close'].iloc[-1]
+                    atr_val = recent_df['ATR'].iloc[-1]
+                    min_p = recent_df['Low'].min()
+                    max_p = recent_df['High'].max()
+                    
+                    # 1. VRVP (Profil Wolumenu)
+                    bins_vrvp = np.linspace(min_p, max_p, 40)
+                    recent_df['Bin'] = pd.cut(recent_df['Close'], bins=bins_vrvp)
+                    vrvp = recent_df.groupby('Bin')['Volume'].sum().reset_index()
+                    vrvp['Mid'] = vrvp['Bin'].apply(lambda x: x.mid).astype(float)
+                    poc_idx = vrvp['Volume'].idxmax()
+                    poc_price = vrvp.loc[poc_idx, 'Mid']
+                    
+                    # 2. Liq Map (Matematyczna symulacja stref likwidacji)
+                    window_pivots = 7
+                    rolling_max = recent_df['High'].rolling(window=window_pivots, center=True).max()
+                    rolling_min = recent_df['Low'].rolling(window=window_pivots, center=True).min()
+                    peaks = recent_df[recent_df['High'] == rolling_max]['High'].dropna().values
+                    valleys = recent_df[recent_df['Low'] == rolling_min]['Low'].dropna().values
+                    
+                    liqs = []
+                    # Szacowane Stop Lossy / Likwidacje dla pozycji Short (nad szczytami)
+                    for p in peaks[-10:]:
+                        if p > min_p:
+                            liqs.extend([p + atr_val*0.2, p + atr_val*0.8, p + atr_val*1.5])
+                    # Szacowane Stop Lossy / Likwidacje dla pozycji Long (pod dołkami)
+                    for v in valleys[-10:]:
+                        if v < max_p:
+                            liqs.extend([v - atr_val*0.2, v - atr_val*0.8, v - atr_val*1.5])
+                            
+                    liq_hist, _ = np.histogram(liqs, bins=bins_vrvp)
+                    # Wygładzenie histogramu dla wizualizacji "Heatmapy"
+                    liq_smooth = np.convolve(liq_hist, np.ones(3)/3, mode='same')
+
+                    # ==========================================
+                    # WIZUALIZACJA: TACHOMETR + LIQ MAP + VRVP
+                    # ==========================================
+                    # Logo
+                    logo_images_config = []
+                    logo_path = "logo.png"
+                    if os.path.exists(logo_path):
+                        try:
+                            with open(logo_path, "rb") as image_file:
+                                encoded_string = base64.b64encode(image_file.read()).decode()
+                            logo_images_config.append(dict(
+                                source=f"data:image/png;base64,{encoded_string}",
+                                xref="paper", yref="paper",
+                                x=0.5, y=0.56,
+                                sizex=0.16, sizey=0.16,
+                                xanchor="center", yanchor="middle"
+                            ))
+                        except Exception:
+                            pass
+
+                    # Tworzenie kolumn pod kokpit graficzny
+                    col_left, col_center, col_right = st.columns([1, 1.5, 1])
+                    
+                    y_range_sync = [min_p * 0.99, max_p * 1.01]
+                    common_height = 380
+
+                    # LEWA STRONA: MAPA LIKWIDACJI
+                    with col_left:
+                        fig_liq = go.Figure(go.Bar(
+                            x=liq_smooth,
+                            y=vrvp['Mid'],
+                            orientation='h',
+                            marker=dict(color=liq_smooth, colorscale='YlOrRd', showscale=False)
+                        ))
+                        fig_liq.update_layout(
+                            xaxis=dict(autorange='reversed', showgrid=False, zeroline=False, showticklabels=False),
+                            yaxis=dict(range=y_range_sync, showgrid=False, tickfont=dict(color='white')),
+                            paper_bgcolor="#0E1117", plot_bgcolor="#0E1117",
+                            margin=dict(l=0, r=0, t=50, b=20),
+                            title=dict(text="🔥 MAPA LIKWIDACJI", font=dict(color='white', size=14), x=0.5),
+                            height=common_height
+                        )
+                        fig_liq.add_hline(y=current_price, line_dash="dot", line_color="#ffffff")
+                        st.plotly_chart(fig_liq, use_container_width=True)
+
+                    # ŚRODEK: TACHOMETR
+                    with col_center:
+                        fig_gauge = go.Figure(go.Indicator(
+                            mode = "gauge+number",
+                            value = syndicate_score,
+                            domain = {'x': [0, 1], 'y': [0, 1]},
+                            title = {'text': "⚡ MOC KIERUNKOWA ⚡", 'font': {'color': 'white', 'size': 18, 'family': "Arial"}},
+                            number = {'suffix': "%", 'font': {'color': verdict_color, 'size': 45, 'family': "Arial"}},
+                            gauge = {
+                                'axis': {'range': [0, 100], 'tickwidth': 2, 'tickcolor': "white"},
+                                'bar': {'color': verdict_color, 'thickness': 0.25},
+                                'bgcolor': "#0E1117",
+                                'borderwidth': 2,
+                                'bordercolor': "#333",
+                                'steps': [
+                                    {'range': [0, 45], 'color': "rgba(255, 0, 85, 0.15)"},
+                                    {'range': [45, 55], 'color': "rgba(170, 170, 170, 0.15)"},
+                                    {'range': [55, 100], 'color': "rgba(0, 255, 65, 0.15)"}
+                                ],
+                                'threshold': {
+                                    'line': {'color': "white", 'width': 4},
+                                    'thickness': 0.75,
+                                    'value': syndicate_score
+                                }
+                            }
+                        ))
+                        fig_gauge.update_layout(
+                            paper_bgcolor="#0E1117", plot_bgcolor="#0E1117",
+                            font={'color': "white", 'family': "Arial"},
+                            height=common_height,
+                            margin=dict(l=30, r=30, t=50, b=20),
+                            images=logo_images_config,
+                            annotations=[
+                                dict(
+                                    x=0.15, y=0.30, xref="paper", yref="paper",
+                                    text="<b>SHORT 📉</b>", showarrow=False,
+                                    font=dict(color="#ff0055", size=15, family="Arial"), xanchor="center"
+                                ),
+                                dict(
+                                    x=0.85, y=0.30, xref="paper", yref="paper",
+                                    text="<b>LONG 📈</b>", showarrow=False,
+                                    font=dict(color="#00ff41", size=15, family="Arial"), xanchor="center"
+                                )
+                            ]
+                        )
+                        st.plotly_chart(fig_gauge, use_container_width=True)
+
+                    # PRAWA STRONA: VRVP
+                    with col_right:
+                        fig_vrvp = go.Figure(go.Bar(
+                            x=vrvp['Volume'],
+                            y=vrvp['Mid'],
+                            orientation='h',
+                            marker_color='rgba(0, 210, 255, 0.6)'
+                        ))
+                        fig_vrvp.update_layout(
+                            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                            yaxis=dict(range=y_range_sync, showgrid=False, tickfont=dict(color='white'), side='right'),
+                            paper_bgcolor="#0E1117", plot_bgcolor="#0E1117",
+                            margin=dict(l=0, r=0, t=50, b=20),
+                            title=dict(text="📊 PROFIL WOLUMENU", font=dict(color='white', size=14), x=0.5),
+                            height=common_height
+                        )
+                        fig_vrvp.add_hline(y=poc_price, line_color="#ff0055", line_width=2, annotation_text="POC", annotation_position="top right", annotation_font_color="#ff0055")
+                        fig_vrvp.add_hline(y=current_price, line_dash="dot", line_color="#ffffff", annotation_text="Cena", annotation_position="bottom right", annotation_font_color="white")
+                        st.plotly_chart(fig_vrvp, use_container_width=True)
+
+                except Exception as e:
+                    st.error(f"Błąd podczas operacji Syndykatu AI: {e}")
+
+    @st.fragment
     def render_anomaly_hunter(self):
         """
         Sekcja wizualna: Wyświetla interfejs detektora anomalii i rysuje dedykowany wykres.
@@ -33861,6 +34215,7 @@ def main():
     app.render_catalyst_radar()
     app.render_wyrocznia_ai()
     app.render_omni_comparator()
+    app.render_ai_trader_syndicate()
     app.render_anomaly_hunter()
     app.render_floating_searcher()
     app.render_opiekun_hud()
