@@ -29641,10 +29641,13 @@ class MarketProbabilityIndex:
         """
         Sekcja "Syndykat Traderów AI".
         Uruchamia 3 niezależne modele XGBoost na niskich interwałach (Daytrading/Swing):
-        1. Bezduszny Scalper (Szansa na wzrost w następnej świecy)
-        2. Skaner Smart Money (Szansa na wzrost w perspektywie 3 świec bazując na anomaliach wolumenu)
-        3. Łowca Likwidacji (Szansa na gwałtowne, ponadwymiarowe wybicie - Short Squeeze)
-        Zawiera Tachometr Konsensusu, Mapę Likwidacji (Liq Map) oraz Profil Wolumenu (VRVP).
+        1. Bezduszny Scalper
+        2. Skaner Smart Money
+        3. Łowca Likwidacji
+        Wzbogacona o zaawansowany tachometr Plotly, Mapę Likwidacji, VRVP, 
+        panel 6 skanerów (w tym Projektor Przyszłości) i tryb HIGH LEV TRADE.
+        Zoptymalizowano marginesy nagłówka oraz wyrównano wysokości ramek skanerów.
+        Odsunięto dolny rząd skanerów nieco w dół.
         """
         import streamlit as st
         import yfinance as yf
@@ -29654,7 +29657,7 @@ class MarketProbabilityIndex:
         import base64
         import os
         
-        st.markdown("<h3 style='color: #ff0055;'>🏴‍☠️ Syndykat Traderów AI (XGBoost Daytrading)</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #ff0055; margin-top: 50px;'>🏴‍☠️ Syndykat Traderów AI (XGBoost Daytrading)</h3>", unsafe_allow_html=True)
         st.write("Trzy wyspecjalizowane modele sztucznej inteligencji skanujące mikro-strukturę rynku w poszukiwaniu przewagi taktycznej.")
         
         try:
@@ -29664,11 +29667,11 @@ class MarketProbabilityIndex:
             return
             
         st.markdown("""
-        <div style="background: rgba(255, 0, 85, 0.05); border-left: 3px solid #ff0055; padding: 12px; margin-bottom: 20px; font-size: 13px; border-radius: 0 5px 5px 0; line-height: 1.5;">
-            <b style="color: #ff0055; font-size: 14px;">🧠 Przewodnik Taktyczny po Modelach:</b><br>
-            • <b>Bezduszny Scalper:</b> Analizuje czyste momentum i skrajne wyprzedanie/wykupienie (RSI). Prognozuje kierunek wyłącznie dla <u>jednej, najbliższej świecy</u>. Narzędzie pod szybki skalping.<br>
-            • <b>Skaner Smart Money:</b> Tropi anomalie wolumenowe i ukryte zaangażowanie dużego kapitału. Prognozuje układ sił w horyzoncie <u>3 świec w przód</u>, ignorując chwilowy szum informacyjny.<br>
-            • <b>Łowca Likwidacji:</b> Mierzy nienaturalne rozciągnięcie zmienności względem pasma ATR. Ocenia szansę na <u>gwałtowny, ponadwymiarowy wystrzał ceny</u> (np. wywołany kaskadą likwidacji pozycji krótkich – Short Squeeze).
+        <div style="background: rgba(255, 0, 85, 0.05); border-left: 3px solid #ff0055; padding: 12px; margin-bottom: 20px; font-size: 14px; border-radius: 0 5px 5px 0; line-height: 1.5;">
+            <b style="color: #ff0055; font-size: 15px;">🧠 Przewodnik Taktyczny po Modelach:</b><br>
+            • <b>Bezduszny Scalper:</b> Analizuje czyste momentum i skrajne wyprzedanie/wykupienie (RSI). Prognozuje kierunek dla <u>jednej najbliższej świecy</u>.<br>
+            • <b>Skaner Smart Money:</b> Tropi anomalie wolumenowe. Prognozuje układ sił w horyzoncie <u>3 świec w przód</u>, ignorując szum.<br>
+            • <b>Łowca Likwidacji:</b> Mierzy nienaturalne rozciągnięcie zmienności. Ocenia szansę na <u>gwałtowny, ponadwymiarowy wystrzał ceny</u> (Short Squeeze).
         </div>
         """, unsafe_allow_html=True)
         
@@ -29686,46 +29689,127 @@ class MarketProbabilityIndex:
                 st.warning("Najpierw wprowadź ticker!")
                 return
                 
-            with st.spinner(f"Syndykat pobiera dane {interval} i trenuje 3 niezależne modele XGBoost dla {ticker}..."):
+            with st.spinner(f"Syndykat pobiera dane {interval}, trenuje XGBoost i wylicza MTF/CVD/FVG/Cele dla {ticker}..."):
                 try:
                     if interval == "15m":
                         period = "60d"
+                        htf_interval = "1h"
+                        htf_period = "730d"
                     elif interval == "1h":
                         period = "730d"
+                        htf_interval = "1d"
+                        htf_period = "5y"
                     else:
                         period = "2y"
+                        htf_interval = "1wk"
+                        htf_period = "10y"
                         
                     data = yf.download(ticker, period=period, interval=interval, progress=False)
+                    htf_data = yf.download(ticker, period=htf_period, interval=htf_interval, progress=False)
                     
-                    if data.empty:
-                        st.error(f"Nie znaleziono danych rynkowych dla {ticker} na interwale {interval}.")
+                    if data.empty or htf_data.empty:
+                        st.error(f"Nie znaleziono pełnych danych rynkowych dla {ticker}.")
                         return
                         
                     if isinstance(data.columns, pd.MultiIndex):
                         close_col = data['Close'][ticker] if ticker in data['Close'] else data['Close'].iloc[:, 0]
+                        open_col = data['Open'][ticker] if ticker in data['Open'] else data['Open'].iloc[:, 0]
                         high_col = data['High'][ticker] if ticker in data['High'] else data['High'].iloc[:, 0]
                         low_col = data['Low'][ticker] if ticker in data['Low'] else data['Low'].iloc[:, 0]
                         vol_col = data['Volume'][ticker] if ticker in data['Volume'] else data['Volume'].iloc[:, 0]
+                        
+                        htf_close = htf_data['Close'][ticker] if ticker in htf_data['Close'] else htf_data['Close'].iloc[:, 0]
                     else:
                         close_col = data['Close']
+                        open_col = data['Open']
                         high_col = data['High']
                         low_col = data['Low']
                         vol_col = data['Volume']
                         
+                        htf_close = htf_data['Close']
+                        
                     df = pd.DataFrame({
+                        'Open': open_col,
                         'Close': close_col,
                         'High': high_col,
                         'Low': low_col,
                         'Volume': vol_col
                     }).dropna()
-                    
-                    # --- INŻYNIERIA CECH ---
+
                     df['Returns'] = df['Close'].pct_change()
                     df['TR'] = np.maximum((df['High'] - df['Low']), 
                                           np.maximum(abs(df['High'] - df['Close'].shift(1)), 
                                                      abs(df['Low'] - df['Close'].shift(1))))
                     df['ATR'] = df['TR'].rolling(14).mean()
                     
+                    df_clean = df.dropna()
+                    recent_df = df_clean.tail(150).copy()
+                    current_price = recent_df['Close'].iloc[-1]
+                    current_open = recent_df['Open'].iloc[-1]
+                    current_close = current_price
+                    atr_current = recent_df['ATR'].iloc[-1]
+                    min_p = recent_df['Low'].min()
+                    max_p = recent_df['High'].max()
+                    
+                    bins_vrvp = np.linspace(min_p, max_p, 40)
+                    recent_df['Bin'] = pd.cut(recent_df['Close'], bins=bins_vrvp)
+                    vrvp = recent_df.groupby('Bin')['Volume'].sum().reset_index()
+                    vrvp['Mid'] = vrvp['Bin'].apply(lambda x: x.mid).astype(float)
+                    poc_idx = vrvp['Volume'].idxmax()
+                    poc_price = vrvp.loc[poc_idx, 'Mid']
+                    
+                    # ==========================================
+                    # SKANERY STRUKTURALNE (MTF, CVD, FVG)
+                    # ==========================================
+                    
+                    # 1. MTF (Multi-Timeframe Trend)
+                    htf_sma20 = htf_close.rolling(20).mean().dropna()
+                    if len(htf_sma20) > 0:
+                        mtf_bullish = htf_close.iloc[-1] > htf_sma20.iloc[-1]
+                        mtf_status = "WZROSTOWY 🟢" if mtf_bullish else "SPADKOWY 🔴"
+                    else:
+                        mtf_status = "BRAK DANYCH"
+                        
+                    # 2. CVD (Cumulative Volume Delta)
+                    hl_range = df['High'] - df['Low']
+                    hl_range = hl_range.replace(0, 1e-8)
+                    df['Delta'] = ((df['Close'] - df['Open']) / hl_range) * df['Volume']
+                    df['CVD'] = df['Delta'].cumsum()
+                    if df['CVD'].iloc[-1] > df['CVD'].iloc[-5]:
+                        cvd_status = "AKUMULACJA 📈"
+                        cvd_color = "#00ff41"
+                    else:
+                        cvd_status = "DYSTRYBUCJA 📉"
+                        cvd_color = "#ff0055"
+                        
+                    # 3. FVG (Fair Value Gaps)
+                    last_fvg_type = "BRAK LUKI"
+                    last_fvg_price = "Brak bliskiej luki"
+                    fvg_color = "#888888"
+                    
+                    bullish_fvgs = []
+                    bearish_fvgs = []
+                    
+                    search_range = min(50, len(df))
+                    for i in range(len(df)-2, len(df)-search_range, -1):
+                        if df['Low'].iloc[i] > df['High'].iloc[i-2] and df['Close'].iloc[i-1] > df['Open'].iloc[i-1]:
+                            gap_size = df['Low'].iloc[i] - df['High'].iloc[i-2]
+                            bullish_fvgs.append({'level': (df['Low'].iloc[i] + df['High'].iloc[i-2])/2, 'size': gap_size})
+                            if last_fvg_type == "BRAK LUKI":
+                                last_fvg_type = "BULLISH FVG 🟢"
+                                last_fvg_price = f"${df['High'].iloc[i-2]:.2f} - ${df['Low'].iloc[i]:.2f}"
+                                fvg_color = "#00ff41"
+                        elif df['High'].iloc[i] < df['Low'].iloc[i-2] and df['Close'].iloc[i-1] < df['Open'].iloc[i-1]:
+                            gap_size = df['Low'].iloc[i-2] - df['High'].iloc[i]
+                            bearish_fvgs.append({'level': (df['High'].iloc[i] + df['Low'].iloc[i-2])/2, 'size': gap_size})
+                            if last_fvg_type == "BRAK LUKI":
+                                last_fvg_type = "BEARISH FVG 🔴"
+                                last_fvg_price = f"${df['High'].iloc[i]:.2f} - ${df['Low'].iloc[i-2]:.2f}"
+                                fvg_color = "#ff0055"
+
+                    # ==========================================
+                    # INŻYNIERIA CECH DLA XGBOOST
+                    # ==========================================
                     df['Vol_SMA'] = df['Volume'].rolling(20).mean()
                     df['Vol_Anomaly'] = df['Volume'] / df['Vol_SMA']
                     
@@ -29745,10 +29829,10 @@ class MarketProbabilityIndex:
                     df['Target_SM'] = (df['Close'].shift(-3) > df['Close']).astype(int)
                     df['Target_Squeeze'] = (df['Close'].shift(-1) > (df['Close'] + (df['ATR'] * 0.5))).astype(int)
                     
-                    df_clean = df.dropna()
+                    df_xgb_clean = df.dropna()
                     features = ['Returns', 'ATR', 'Vol_Anomaly', 'Dist_SMA_10', 'Dist_SMA_50', 'RSI_14']
                     
-                    last_features = df_clean[features].iloc[-1:]
+                    last_features = df_xgb_clean[features].iloc[-1:]
                     
                     xgb_params = {
                         'eval_metric': 'logloss',
@@ -29761,24 +29845,24 @@ class MarketProbabilityIndex:
                     }
                     
                     # 1. SCALPER
-                    df_m1 = df_clean.iloc[:-1]
+                    df_m1 = df_xgb_clean.iloc[:-1]
                     m1 = xgb.XGBClassifier(**xgb_params)
                     m1.fit(df_m1[features], df_m1['Target_Scalp'])
                     prob_scalp = m1.predict_proba(last_features)[0][1] * 100
                     
                     # 2. SMART MONEY
-                    df_m2 = df_clean.iloc[:-3]
+                    df_m2 = df_xgb_clean.iloc[:-3]
                     m2 = xgb.XGBClassifier(**xgb_params)
                     m2.fit(df_m2[features], df_m2['Target_SM'])
                     prob_sm = m2.predict_proba(last_features)[0][1] * 100
                     
                     # 3. SQUEEZE PREDICTOR
-                    df_m3 = df_clean.iloc[:-1]
+                    df_m3 = df_xgb_clean.iloc[:-1]
                     m3 = xgb.XGBClassifier(**xgb_params)
                     m3.fit(df_m3[features], df_m3['Target_Squeeze'])
                     prob_squeeze = m3.predict_proba(last_features)[0][1] * 100
                     
-                    # --- RENDERY DASHBOARDU KART ---
+                    # --- RENDERY KART (GÓRA) ---
                     st.markdown("---")
                     st.markdown(f"### 🎯 Raport Taktyczny: {ticker} (Interwał: {interval})")
                     
@@ -29788,8 +29872,8 @@ class MarketProbabilityIndex:
                         color1 = "#00ff41" if prob_scalp >= 50 else "#ff0055"
                         st.markdown(f"""
                         <div style="background: #0E1117; padding: 15px; border-radius: 8px; border-top: 4px solid {color1}; text-align: center; height: 160px;">
-                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 14px;">1. Bezduszny Scalper</h5>
-                            <div style="font-size: 11px; color: #888; margin-bottom: 10px;">Szansa na wzrost (1 świeca)</div>
+                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 15px;">1. Bezduszny Scalper</h5>
+                            <div style="font-size: 13px; color: #888; margin-bottom: 10px;">Szansa na wzrost (1 świeca)</div>
                             <h2 style="color: {color1}; margin: 0; text-shadow: 0 0 5px {color1}60;">{prob_scalp:.1f}%</h2>
                         </div>
                         """, unsafe_allow_html=True)
@@ -29798,8 +29882,8 @@ class MarketProbabilityIndex:
                         color2 = "#00d2ff" if prob_sm >= 50 else "#ff0055"
                         st.markdown(f"""
                         <div style="background: #0E1117; padding: 15px; border-radius: 8px; border-top: 4px solid {color2}; text-align: center; height: 160px;">
-                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 14px;">2. Skaner Smart Money</h5>
-                            <div style="font-size: 11px; color: #888; margin-bottom: 10px;">Szansa na wzrost (3 świece)</div>
+                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 15px;">2. Skaner Smart Money</h5>
+                            <div style="font-size: 13px; color: #888; margin-bottom: 10px;">Szansa na wzrost (3 świece)</div>
                             <h2 style="color: {color2}; margin: 0; text-shadow: 0 0 5px {color2}60;">{prob_sm:.1f}%</h2>
                         </div>
                         """, unsafe_allow_html=True)
@@ -29808,8 +29892,8 @@ class MarketProbabilityIndex:
                         color3 = "#ffcc00" if prob_squeeze >= 25 else "#555"
                         st.markdown(f"""
                         <div style="background: #0E1117; padding: 15px; border-radius: 8px; border-top: 4px solid {color3}; text-align: center; height: 160px;">
-                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 14px;">3. Łowca Likwidacji</h5>
-                            <div style="font-size: 11px; color: #888; margin-bottom: 10px;">Szansa na Short Squeeze</div>
+                            <h5 style="color: #ccc; margin-bottom: 5px; font-size: 15px;">3. Łowca Likwidacji</h5>
+                            <div style="font-size: 13px; color: #888; margin-bottom: 10px;">Szansa na Short Squeeze</div>
                             <h2 style="color: {color3}; margin: 0; text-shadow: 0 0 5px {color3}60;">{prob_squeeze:.1f}%</h2>
                         </div>
                         """, unsafe_allow_html=True)
@@ -29831,30 +29915,202 @@ class MarketProbabilityIndex:
                         icon = "⚪"
                         
                     st.markdown(f"""
-                    <div style="text-align: center; margin-top: 25px; padding: 20px; background-color: #000000; border: 1px solid {verdict_color}; border-radius: 10px; margin-bottom: 15px;">
-                        <p style="color: #aaa; font-size: 12px; margin-bottom: 5px; letter-spacing: 1px;">OSTATECZNY WERDYKT SYNDYKATU</p>
+                    <div style="text-align: center; margin-top: 25px; padding: 20px; background-color: #000000; border: 1px solid {verdict_color}; border-radius: 10px; margin-bottom: 25px;">
+                        <p style="color: #aaa; font-size: 13px; margin-bottom: 5px; letter-spacing: 1px;">OSTATECZNY WERDYKT SYNDYKATU</p>
                         <h2 style="color: {verdict_color}; margin: 0; letter-spacing: 2px;">{icon} {verdict_text}</h2>
                     </div>
                     """, unsafe_allow_html=True)
 
                     # ==========================================
-                    # KALKULACJE DLA VRVP ORAZ MAPY LIKWIDACJI
+                    # 4. ROZBUDOWANY MODUŁ MULTI-TARGET Z "HIGH LEV TRADE"
                     # ==========================================
-                    recent_df = df_clean.tail(150).copy()
-                    current_price = recent_df['Close'].iloc[-1]
-                    atr_val = recent_df['ATR'].iloc[-1]
-                    min_p = recent_df['Low'].min()
-                    max_p = recent_df['High'].max()
+                    if syndicate_score >= 55:
+                        base_prob = syndicate_score
+                        sl_price = current_price - (1.5 * atr_current)
+                        
+                        targets = []
+                        if poc_price > current_price:
+                            targets.append({'level': poc_price, 'size': 0, 'label': 'POC 📊'})
+                        for fvg in bearish_fvgs:
+                            if fvg['level'] > current_price:
+                                targets.append({'level': fvg['level'], 'size': fvg['size'], 'label': 'FVG 🧲'})
+                                
+                        while len(targets) < 3:
+                            mult = len(targets) + 1
+                            targets.append({'level': current_price + (mult * atr_current), 'size': 0, 'label': f'ATR T{mult}'})
+                            
+                        targets = sorted(targets, key=lambda x: x['level'])[:3]
+                        
+                        risk_status = ""
+                        high_lev_triggered = False
+                        
+                        for idx, tg in enumerate(targets, 1):
+                            dist = abs(tg['level'] - current_price)
+                            tg_prob = base_prob * np.exp(-dist / (3.0 * atr_current))
+                            tg_prob = max(5.0, min(95.0, tg_prob))
+                            eta_candles = max(1, int(round(dist / atr_current)))
+                            gap_info = f" (Luka: ${tg['size']:.2f})" if tg['size'] > 0 else " (POC)" if "POC" in tg['label'] else " (ATR)"
+                            risk_status += f"🎯 <b>TP{idx}:</b> ${tg['level']:.2f}{gap_info} | Prawd.: <b>{tg_prob:.1f}%</b> (ETA: ~{eta_candles}ś)<br>"
+                            
+                            if idx == 1 and tg_prob >= 70.0:
+                                high_lev_triggered = True
+                                
+                        if high_lev_triggered:
+                            risk_title = f"<span style='color: #ffcc00; font-size: 16px; text-shadow: 0 0 5px #ffcc0080;'>🔥 HIGH LEV TRADE 🔥</span><br><span style='font-size: 13px; color: #fff;'>SL: ${sl_price:.2f} | Dźwignia do x20</span>"
+                        else:
+                            risk_title = f"SL: ${sl_price:.2f} | Max 2% kapitału"
+                            
+                        risk_color = "#00ff41"
+                        
+                    elif syndicate_score <= 45:
+                        base_prob = 100 - syndicate_score
+                        sl_price = current_price + (1.5 * atr_current)
+                        
+                        targets = []
+                        if poc_price < current_price:
+                            targets.append({'level': poc_price, 'size': 0, 'label': 'POC 📊'})
+                        for fvg in bullish_fvgs:
+                            if fvg['level'] < current_price:
+                                targets.append({'level': fvg['level'], 'size': fvg['size'], 'label': 'FVG 🧲'})
+                                
+                        while len(targets) < 3:
+                            mult = len(targets) + 1
+                            targets.append({'level': current_price - (mult * atr_current), 'size': 0, 'label': f'ATR T{mult}'})
+                            
+                        targets = sorted(targets, key=lambda x: x['level'], reverse=True)[:3]
+                        
+                        risk_status = ""
+                        high_lev_triggered = False
+                        
+                        for idx, tg in enumerate(targets, 1):
+                            dist = abs(tg['level'] - current_price)
+                            tg_prob = base_prob * np.exp(-dist / (3.0 * atr_current))
+                            tg_prob = max(5.0, min(95.0, tg_prob))
+                            eta_candles = max(1, int(round(dist / atr_current)))
+                            gap_info = f" (Luka: ${tg['size']:.2f})" if tg['size'] > 0 else " (POC)" if "POC" in tg['label'] else " (ATR)"
+                            risk_status += f"🎯 <b>TP{idx}:</b> ${tg['level']:.2f}{gap_info} | Prawd.: <b>{tg_prob:.1f}%</b> (ETA: ~{eta_candles}ś)<br>"
+                            
+                            if idx == 1 and tg_prob >= 70.0:
+                                high_lev_triggered = True
+                                
+                        if high_lev_triggered:
+                            risk_title = f"<span style='color: #ffcc00; font-size: 16px; text-shadow: 0 0 5px #ffcc0080;'>🔥 HIGH LEV TRADE 🔥</span><br><span style='font-size: 13px; color: #fff;'>SL: ${sl_price:.2f} | Dźwignia do x20</span>"
+                        else:
+                            risk_title = f"SL: ${sl_price:.2f} | Max 2% kapitału"
+                            
+                        risk_color = "#ff0055"
+                        
+                    else:
+                        risk_title = "Brak jasnej strefy SL/TP"
+                        risk_status = "Strefa Chaosu - Oczekiwanie na impuls rynkowy"
+                        risk_color = "#888888"
+
+                    # 5. Radar Katalizatorów (Szok Zmienności Makro)
+                    atr_sma50 = df_clean['ATR'].rolling(50).mean().iloc[-1]
+                    if pd.notna(atr_sma50) and atr_current > (1.5 * atr_sma50):
+                        macro_status = "SZOK MAKRO 🔴"
+                        macro_sub = "ZAKAZ HANDLU (Zmienność i Szum)"
+                        macro_color = "#ff0055"
+                    else:
+                        macro_status = "ŚRODOWISKO CZYSTE 🟢"
+                        macro_sub = "Handel Dozwolony (Standard ATR)"
+                        macro_color = "#00ff41"
+
+                    # 6. Projektor Przyszłości (Reversal Radar)
+                    if current_close < current_open:
+                        sup_levels = [f['level'] for f in bullish_fvgs if f['level'] < current_close]
+                        if poc_price < current_close: sup_levels.append(poc_price)
+                        
+                        if sup_levels:
+                            target_sup = max(sup_levels)
+                            dist_to_sup = current_close - target_sup
+                            eta_rev = max(1, int(round(dist_to_sup / atr_current)))
+                            rev_title = f"Gotowość na LONG 🟢"
+                            rev_text = f"Cel odwrócenia: ${target_sup:.2f}<br><span style='font-size: 12px; color: #aaa;'>ETA: ~{eta_rev} świec (Dystans: ${dist_to_sup:.2f})</span>"
+                            rev_color = "#00ff41"
+                        else:
+                            rev_title = "Szukanie dna..."
+                            rev_text = "Brak bliskiego wsparcia FVG/POC."
+                            rev_color = "#888888"
+                            
+                    else:
+                        res_levels = [f['level'] for f in bearish_fvgs if f['level'] > current_close]
+                        if poc_price > current_close: res_levels.append(poc_price)
+                        
+                        if res_levels:
+                            target_res = min(res_levels)
+                            dist_to_res = target_res - current_close
+                            eta_rev = max(1, int(round(dist_to_res / atr_current)))
+                            rev_title = f"Gotowość na SHORT 🔴"
+                            rev_text = f"Cel odwrócenia: ${target_res:.2f}<br><span style='font-size: 12px; color: #aaa;'>ETA: ~{eta_rev} świec (Dystans: ${dist_to_res:.2f})</span>"
+                            rev_color = "#ff0055"
+                        else:
+                            rev_title = "Cenowe Odkrycie..."
+                            rev_text = "Brak bliskiego oporu FVG/POC."
+                            rev_color = "#888888"
+
+                    # ==========================================
+                    # PANEL SKANERÓW STRUKTURALNYCH
+                    # ==========================================
+                    st.markdown("<h4 style='color: #00d2ff; font-size: 17px; margin-bottom: 10px;'>🔬 Skanery Strukturalne i Kontrola Ryzyka</h4>", unsafe_allow_html=True)
                     
-                    # 1. VRVP (Profil Wolumenu)
-                    bins_vrvp = np.linspace(min_p, max_p, 40)
-                    recent_df['Bin'] = pd.cut(recent_df['Close'], bins=bins_vrvp)
-                    vrvp = recent_df.groupby('Bin')['Volume'].sum().reset_index()
-                    vrvp['Mid'] = vrvp['Bin'].apply(lambda x: x.mid).astype(float)
-                    poc_idx = vrvp['Volume'].idxmax()
-                    poc_price = vrvp.loc[poc_idx, 'Mid']
-                    
-                    # 2. Liq Map (Matematyczna symulacja stref likwidacji)
+                    col_s1, col_s2, col_s3 = st.columns(3)
+                    with col_s1:
+                        st.markdown(f"""
+                        <div style="background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: center; height: 110px;">
+                            <div style="font-size: 13px; color: #aaa;">Konfluencja MTF ({htf_interval})</div>
+                            <div style="font-size: 16px; font-weight: bold; color: {'#00ff41' if mtf_bullish else '#ff0055'}; margin-top: 5px;">{mtf_status}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col_s2:
+                        st.markdown(f"""
+                        <div style="background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: center; height: 110px;">
+                            <div style="font-size: 13px; color: #aaa;">CVD (Delta Wolumenu)</div>
+                            <div style="font-size: 16px; font-weight: bold; color: {cvd_color}; margin-top: 5px;">{cvd_status}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col_s3:
+                        st.markdown(f"""
+                        <div style="background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: center; height: 110px;">
+                            <div style="font-size: 13px; color: #aaa;">Luka Płynności (FVG)</div>
+                            <div style="font-size: 15px; font-weight: bold; color: {fvg_color}; margin-top: 5px;">{last_fvg_type} <br> <span style="font-size: 12px; color: #fff;">{last_fvg_price}</span></div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    col_s4, col_s5, col_s6 = st.columns([1.5, 1, 1])
+                    with col_s4:
+                        st.markdown(f"""
+                        <div style="background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: left; margin-top: 25px; height: 135px;">
+                            <div style="font-size: 13px; color: #aaa; text-align: center;">Kalkulator Pozycji Multi-Target (Kierunek: {icon})</div>
+                            <div style="font-size: 15px; font-weight: bold; color: {risk_color}; margin-top: 5px; text-align: center;">{risk_title}</div>
+                            <div style="font-size: 13px; color: #fff; margin-top: 8px; line-height: 1.5;">{risk_status}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col_s5:
+                        st.markdown(f"""
+                        <div style="background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: center; margin-top: 25px; height: 135px;">
+                            <div style="font-size: 13px; color: #aaa;">Radar Katalizatorów (News)</div>
+                            <div style="font-size: 16px; font-weight: bold; color: {macro_color}; margin-top: 15px;">{macro_status} <br> <span style="font-size: 12px; color: #fff;">{macro_sub}</span></div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col_s6:
+                        st.markdown(f"""
+                        <div style="background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: center; margin-top: 25px; height: 135px;">
+                            <div style="font-size: 13px; color: #aaa;">Projektor Przyszłości (Reversal)</div>
+                            <div style="font-size: 16px; font-weight: bold; color: {rev_color}; margin-top: 15px;">{rev_title}</div>
+                            <div style="font-size: 13px; color: #fff; margin-top: 5px; line-height: 1.5;">{rev_text}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    st.markdown("<br><br>", unsafe_allow_html=True)
+
+                    # ==========================================
+                    # KALKULACJE DLA MAPY LIKWIDACJI
+                    # ==========================================
                     window_pivots = 7
                     rolling_max = recent_df['High'].rolling(window=window_pivots, center=True).max()
                     rolling_min = recent_df['Low'].rolling(window=window_pivots, center=True).min()
@@ -29862,23 +30118,19 @@ class MarketProbabilityIndex:
                     valleys = recent_df[recent_df['Low'] == rolling_min]['Low'].dropna().values
                     
                     liqs = []
-                    # Szacowane Stop Lossy / Likwidacje dla pozycji Short (nad szczytami)
                     for p in peaks[-10:]:
                         if p > min_p:
-                            liqs.extend([p + atr_val*0.2, p + atr_val*0.8, p + atr_val*1.5])
-                    # Szacowane Stop Lossy / Likwidacje dla pozycji Long (pod dołkami)
+                            liqs.extend([p + atr_current*0.2, p + atr_current*0.8, p + atr_current*1.5])
                     for v in valleys[-10:]:
                         if v < max_p:
-                            liqs.extend([v - atr_val*0.2, v - atr_val*0.8, v - atr_val*1.5])
+                            liqs.extend([v - atr_current*0.2, v - atr_current*0.8, v - atr_current*1.5])
                             
                     liq_hist, _ = np.histogram(liqs, bins=bins_vrvp)
-                    # Wygładzenie histogramu dla wizualizacji "Heatmapy"
                     liq_smooth = np.convolve(liq_hist, np.ones(3)/3, mode='same')
 
                     # ==========================================
                     # WIZUALIZACJA: TACHOMETR + LIQ MAP + VRVP
                     # ==========================================
-                    # Logo
                     logo_images_config = []
                     logo_path = "logo.png"
                     if os.path.exists(logo_path):
@@ -29895,13 +30147,10 @@ class MarketProbabilityIndex:
                         except Exception:
                             pass
 
-                    # Tworzenie kolumn pod kokpit graficzny
                     col_left, col_center, col_right = st.columns([1, 1.5, 1])
-                    
                     y_range_sync = [min_p * 0.99, max_p * 1.01]
                     common_height = 380
 
-                    # LEWA STRONA: MAPA LIKWIDACJI
                     with col_left:
                         fig_liq = go.Figure(go.Bar(
                             x=liq_smooth,
@@ -29920,7 +30169,6 @@ class MarketProbabilityIndex:
                         fig_liq.add_hline(y=current_price, line_dash="dot", line_color="#ffffff")
                         st.plotly_chart(fig_liq, use_container_width=True)
 
-                    # ŚRODEK: TACHOMETR
                     with col_center:
                         fig_gauge = go.Figure(go.Indicator(
                             mode = "gauge+number",
@@ -29967,7 +30215,6 @@ class MarketProbabilityIndex:
                         )
                         st.plotly_chart(fig_gauge, use_container_width=True)
 
-                    # PRAWA STRONA: VRVP
                     with col_right:
                         fig_vrvp = go.Figure(go.Bar(
                             x=vrvp['Volume'],
