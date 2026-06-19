@@ -29648,6 +29648,11 @@ class MarketProbabilityIndex:
         panel 6 skanerów (w tym Projektor Przyszłości) i tryb HIGH LEV TRADE.
         Zoptymalizowano marginesy nagłówka oraz wyrównano wysokości ramek skanerów.
         Odsunięto dolny rząd skanerów nieco w dół.
+        Dodano interaktywne wykresy świecowe obok siebie z "Camera Lockiem".
+        Zamieniono kolory i nazewnictwo FVG (Luki wyższe = LONG/Zielone, Luki niższe = SHORT/Czerwone).
+        Zwiększono zasięg skanowania FVG do 1000 świec.
+        Wprowadzono dynamiczny układ i powiększoną historię dla interwału 1wk.
+        Dodano znak wodny z Tickerem i Interwałem na wykresach głównych.
         """
         import streamlit as st
         import yfinance as yf
@@ -29680,7 +29685,7 @@ class MarketProbabilityIndex:
             with col1:
                 ticker = st.text_input("Wprowadź Ticker (Akcje np. TSLA lub Krypto np. BTC-USD):", key="synd_ticker").upper().strip()
             with col2:
-                interval = st.selectbox("Interwał czasowy (Świeca):", ["15m", "1h", "1d"], index=1)
+                interval = st.selectbox("Interwał czasowy (Świeca):", ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1wk"], index=4)
                 
             submit_btn = st.form_submit_button("🔥 Uruchom Syndykat AI")
             
@@ -29691,34 +29696,61 @@ class MarketProbabilityIndex:
                 
             with st.spinner(f"Syndykat pobiera dane {interval}, trenuje XGBoost i wylicza MTF/CVD/FVG/Cele dla {ticker}..."):
                 try:
-                    if interval == "15m":
+                    if interval == "1m":
+                        period = "7d"
+                        fetch_interval = "1m"
+                        htf_interval = "5m"
+                        htf_period = "60d"
+                    elif interval == "5m":
                         period = "60d"
+                        fetch_interval = "5m"
+                        htf_interval = "15m"
+                        htf_period = "60d"
+                    elif interval == "15m":
+                        period = "60d"
+                        fetch_interval = "15m"
+                        htf_interval = "1h"
+                        htf_period = "730d"
+                    elif interval == "30m":
+                        period = "60d"
+                        fetch_interval = "30m"
                         htf_interval = "1h"
                         htf_period = "730d"
                     elif interval == "1h":
                         period = "730d"
+                        fetch_interval = "1h"
                         htf_interval = "1d"
                         htf_period = "5y"
-                    else:
+                    elif interval == "4h":
+                        period = "730d"
+                        fetch_interval = "1h" # API nie wspiera 4h, pobieramy 1h i agregujemy
+                        htf_interval = "1d"
+                        htf_period = "5y"
+                    elif interval == "1d":
                         period = "2y"
+                        fetch_interval = "1d"
                         htf_interval = "1wk"
                         htf_period = "10y"
+                    else:  # "1wk"
+                        period = "10y"
+                        fetch_interval = "1wk"
+                        htf_interval = "1mo"
+                        htf_period = "max"
                         
-                    data = yf.download(ticker, period=period, interval=interval, progress=False)
+                    data = yf.download(ticker, period=period, interval=fetch_interval, progress=False)
                     htf_data = yf.download(ticker, period=htf_period, interval=htf_interval, progress=False)
                     
                     if data.empty or htf_data.empty:
                         st.error(f"Nie znaleziono pełnych danych rynkowych dla {ticker}.")
                         return
                         
+                    # Ekstrakcja danych Głównego Interwału
                     if isinstance(data.columns, pd.MultiIndex):
                         close_col = data['Close'][ticker] if ticker in data['Close'] else data['Close'].iloc[:, 0]
                         open_col = data['Open'][ticker] if ticker in data['Open'] else data['Open'].iloc[:, 0]
                         high_col = data['High'][ticker] if ticker in data['High'] else data['High'].iloc[:, 0]
                         low_col = data['Low'][ticker] if ticker in data['Low'] else data['Low'].iloc[:, 0]
                         vol_col = data['Volume'][ticker] if ticker in data['Volume'] else data['Volume'].iloc[:, 0]
-                        
-                        htf_close = htf_data['Close'][ticker] if ticker in htf_data['Close'] else htf_data['Close'].iloc[:, 0]
                     else:
                         close_col = data['Close']
                         open_col = data['Open']
@@ -29726,7 +29758,19 @@ class MarketProbabilityIndex:
                         low_col = data['Low']
                         vol_col = data['Volume']
                         
+                    # Ekstrakcja danych Wyższego Interwału (HTF)
+                    if isinstance(htf_data.columns, pd.MultiIndex):
+                        htf_close = htf_data['Close'][ticker] if ticker in htf_data['Close'] else htf_data['Close'].iloc[:, 0]
+                        htf_open = htf_data['Open'][ticker] if ticker in htf_data['Open'] else htf_data['Open'].iloc[:, 0]
+                        htf_high = htf_data['High'][ticker] if ticker in htf_data['High'] else htf_data['High'].iloc[:, 0]
+                        htf_low = htf_data['Low'][ticker] if ticker in htf_data['Low'] else htf_data['Low'].iloc[:, 0]
+                        htf_vol = htf_data['Volume'][ticker] if ticker in htf_data['Volume'] else htf_data['Volume'].iloc[:, 0]
+                    else:
                         htf_close = htf_data['Close']
+                        htf_open = htf_data['Open']
+                        htf_high = htf_data['High']
+                        htf_low = htf_data['Low']
+                        htf_vol = htf_data['Volume']
                         
                     df = pd.DataFrame({
                         'Open': open_col,
@@ -29736,6 +29780,30 @@ class MarketProbabilityIndex:
                         'Volume': vol_col
                     }).dropna()
 
+                    htf_df = pd.DataFrame({
+                        'Open': htf_open,
+                        'Close': htf_close,
+                        'High': htf_high,
+                        'Low': htf_low,
+                        'Volume': htf_vol
+                    }).dropna()
+
+                    # Obliczenia ATR dla HTF przed ewentualną agregacją
+                    htf_df['TR'] = np.maximum((htf_df['High'] - htf_df['Low']), 
+                                          np.maximum(abs(htf_df['High'] - htf_df['Close'].shift(1)), 
+                                                     abs(htf_df['Low'] - htf_df['Close'].shift(1))))
+                    htf_df['ATR'] = htf_df['TR'].rolling(14).mean()
+
+                    # Niestandardowa agregacja dla 4h
+                    if interval == "4h":
+                        df = df.resample('4h').agg({
+                            'Open': 'first',
+                            'High': 'max',
+                            'Low': 'min',
+                            'Close': 'last',
+                            'Volume': 'sum'
+                        }).dropna()
+
                     df['Returns'] = df['Close'].pct_change()
                     df['TR'] = np.maximum((df['High'] - df['Low']), 
                                           np.maximum(abs(df['High'] - df['Close'].shift(1)), 
@@ -29743,7 +29811,12 @@ class MarketProbabilityIndex:
                     df['ATR'] = df['TR'].rolling(14).mean()
                     
                     df_clean = df.dropna()
-                    recent_df = df_clean.tail(150).copy()
+                    htf_df_clean = htf_df.dropna()
+                    
+                    # Dynamiczny bufor w zależności od interwału
+                    recent_limit = 300 if interval == "1wk" else 150
+                    
+                    recent_df = df_clean.tail(recent_limit).copy()
                     current_price = recent_df['Close'].iloc[-1]
                     current_open = recent_df['Open'].iloc[-1]
                     current_close = current_price
@@ -29757,15 +29830,26 @@ class MarketProbabilityIndex:
                     vrvp['Mid'] = vrvp['Bin'].apply(lambda x: x.mid).astype(float)
                     poc_idx = vrvp['Volume'].idxmax()
                     poc_price = vrvp.loc[poc_idx, 'Mid']
+
+                    # Obliczenia VRVP dla HTF
+                    recent_htf_df = htf_df_clean.tail(recent_limit).copy()
+                    htf_min_p = recent_htf_df['Low'].min()
+                    htf_max_p = recent_htf_df['High'].max()
+                    htf_bins = np.linspace(htf_min_p, htf_max_p, 40)
+                    recent_htf_df['Bin'] = pd.cut(recent_htf_df['Close'], bins=htf_bins)
+                    htf_vrvp = recent_htf_df.groupby('Bin')['Volume'].sum().reset_index()
+                    htf_vrvp['Mid'] = htf_vrvp['Bin'].apply(lambda x: x.mid).astype(float)
+                    htf_poc_idx = htf_vrvp['Volume'].idxmax()
+                    htf_poc_price = htf_vrvp.loc[htf_poc_idx, 'Mid']
                     
                     # ==========================================
-                    # SKANERY STRUKTURALNE (MTF, CVD, FVG)
+                    # SKANERY STRUKTURALNE (MTF, CVD, FVG z weryfikacją mitigacji)
                     # ==========================================
                     
                     # 1. MTF (Multi-Timeframe Trend)
-                    htf_sma20 = htf_close.rolling(20).mean().dropna()
+                    htf_sma20 = htf_df_clean['Close'].rolling(20).mean().dropna()
                     if len(htf_sma20) > 0:
-                        mtf_bullish = htf_close.iloc[-1] > htf_sma20.iloc[-1]
+                        mtf_bullish = htf_df_clean['Close'].iloc[-1] > htf_sma20.iloc[-1]
                         mtf_status = "WZROSTOWY 🟢" if mtf_bullish else "SPADKOWY 🔴"
                     else:
                         mtf_status = "BRAK DANYCH"
@@ -29782,30 +29866,87 @@ class MarketProbabilityIndex:
                         cvd_status = "DYSTRYBUCJA 📉"
                         cvd_color = "#ff0055"
                         
-                    # 3. FVG (Fair Value Gaps)
+                    # 3. FVG (Fair Value Gaps) GŁÓWNE
                     last_fvg_type = "BRAK LUKI"
                     last_fvg_price = "Brak bliskiej luki"
                     fvg_color = "#888888"
                     
                     bullish_fvgs = []
                     bearish_fvgs = []
+                    search_range = min(1000, len(df))
+                    stop_idx = max(1, len(df) - search_range)
                     
-                    search_range = min(50, len(df))
-                    for i in range(len(df)-2, len(df)-search_range, -1):
+                    for i in range(len(df)-2, stop_idx, -1):
+                        # Cele dla SHORT (Czerwone)
                         if df['Low'].iloc[i] > df['High'].iloc[i-2] and df['Close'].iloc[i-1] > df['Open'].iloc[i-1]:
-                            gap_size = df['Low'].iloc[i] - df['High'].iloc[i-2]
-                            bullish_fvgs.append({'level': (df['Low'].iloc[i] + df['High'].iloc[i-2])/2, 'size': gap_size})
-                            if last_fvg_type == "BRAK LUKI":
-                                last_fvg_type = "BULLISH FVG 🟢"
-                                last_fvg_price = f"${df['High'].iloc[i-2]:.2f} - ${df['Low'].iloc[i]:.2f}"
-                                fvg_color = "#00ff41"
+                            top = df['Low'].iloc[i]
+                            bottom = df['High'].iloc[i-2]
+                            gap_size = top - bottom
+                            if gap_size > (df['ATR'].iloc[i] * 0.1): # Filtr szumu
+                                mitigated = False
+                                for j in range(i+1, len(df)):
+                                    if df['Low'].iloc[j] < ((top + bottom) / 2): # Mitigacja powyżej 50%
+                                        mitigated = True
+                                        break
+                                if not mitigated:
+                                    bullish_fvgs.append({'level': (top+bottom)/2, 'size': gap_size, 'top': top, 'bottom': bottom, 'start_time': df.index[i]})
+                                    if last_fvg_type == "BRAK LUKI":
+                                        last_fvg_type = "SHORT FVG 🔴"
+                                        last_fvg_price = f"${bottom:.2f} - ${top:.2f}"
+                                        fvg_color = "#ff0055"
+                                        
+                        # Cele dla LONG (Zielone)
                         elif df['High'].iloc[i] < df['Low'].iloc[i-2] and df['Close'].iloc[i-1] < df['Open'].iloc[i-1]:
-                            gap_size = df['Low'].iloc[i-2] - df['High'].iloc[i]
-                            bearish_fvgs.append({'level': (df['High'].iloc[i] + df['Low'].iloc[i-2])/2, 'size': gap_size})
-                            if last_fvg_type == "BRAK LUKI":
-                                last_fvg_type = "BEARISH FVG 🔴"
-                                last_fvg_price = f"${df['High'].iloc[i]:.2f} - ${df['Low'].iloc[i-2]:.2f}"
-                                fvg_color = "#ff0055"
+                            top = df['Low'].iloc[i-2]
+                            bottom = df['High'].iloc[i]
+                            gap_size = top - bottom
+                            if gap_size > (df['ATR'].iloc[i] * 0.1): # Filtr szumu
+                                mitigated = False
+                                for j in range(i+1, len(df)):
+                                    if df['High'].iloc[j] > ((top + bottom) / 2): # Mitigacja powyżej 50%
+                                        mitigated = True
+                                        break
+                                if not mitigated:
+                                    bearish_fvgs.append({'level': (top+bottom)/2, 'size': gap_size, 'top': top, 'bottom': bottom, 'start_time': df.index[i]})
+                                    if last_fvg_type == "BRAK LUKI":
+                                        last_fvg_type = "LONG FVG 🟢"
+                                        last_fvg_price = f"${top:.2f} - ${bottom:.2f}"
+                                        fvg_color = "#00ff41"
+
+                    # 3b. FVG (Fair Value Gaps) HTF (Makro)
+                    htf_bullish_fvgs = []
+                    htf_bearish_fvgs = []
+                    htf_search_range = min(1000, len(htf_df_clean))
+                    htf_stop_idx = max(1, len(htf_df_clean) - htf_search_range)
+                    
+                    for i in range(len(htf_df_clean)-2, htf_stop_idx, -1):
+                        # SHORT HTF (Czerwone)
+                        if htf_df_clean['Low'].iloc[i] > htf_df_clean['High'].iloc[i-2] and htf_df_clean['Close'].iloc[i-1] > htf_df_clean['Open'].iloc[i-1]:
+                            top = htf_df_clean['Low'].iloc[i]
+                            bottom = htf_df_clean['High'].iloc[i-2]
+                            gap_size = top - bottom
+                            if gap_size > (htf_df_clean['ATR'].iloc[i] * 0.1):
+                                mitigated = False
+                                for j in range(i+1, len(htf_df_clean)):
+                                    if htf_df_clean['Low'].iloc[j] < ((top + bottom) / 2):
+                                        mitigated = True
+                                        break
+                                if not mitigated:
+                                    htf_bullish_fvgs.append({'level': (top+bottom)/2, 'size': gap_size, 'top': top, 'bottom': bottom, 'start_time': htf_df_clean.index[i]})
+                                    
+                        # LONG HTF (Zielone)
+                        elif htf_df_clean['High'].iloc[i] < htf_df_clean['Low'].iloc[i-2] and htf_df_clean['Close'].iloc[i-1] < htf_df_clean['Open'].iloc[i-1]:
+                            top = htf_df_clean['Low'].iloc[i-2]
+                            bottom = htf_df_clean['High'].iloc[i]
+                            gap_size = top - bottom
+                            if gap_size > (htf_df_clean['ATR'].iloc[i] * 0.1):
+                                mitigated = False
+                                for j in range(i+1, len(htf_df_clean)):
+                                    if htf_df_clean['High'].iloc[j] > ((top + bottom) / 2):
+                                        mitigated = True
+                                        break
+                                if not mitigated:
+                                    htf_bearish_fvgs.append({'level': (top+bottom)/2, 'size': gap_size, 'top': top, 'bottom': bottom, 'start_time': htf_df_clean.index[i]})
 
                     # ==========================================
                     # INŻYNIERIA CECH DLA XGBOOST
@@ -30074,7 +30215,7 @@ class MarketProbabilityIndex:
                     with col_s3:
                         st.markdown(f"""
                         <div style="background: #111; border: 1px solid #333; padding: 15px; border-radius: 5px; text-align: center; height: 110px;">
-                            <div style="font-size: 13px; color: #aaa;">Luka Płynności (FVG)</div>
+                            <div style="font-size: 13px; color: #aaa;">Ostatnia Aktywna FVG</div>
                             <div style="font-size: 15px; font-weight: bold; color: {fvg_color}; margin-top: 5px;">{last_fvg_type} <br> <span style="font-size: 12px; color: #fff;">{last_fvg_price}</span></div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -30233,6 +30374,154 @@ class MarketProbabilityIndex:
                         fig_vrvp.add_hline(y=poc_price, line_color="#ff0055", line_width=2, annotation_text="POC", annotation_position="top right", annotation_font_color="#ff0055")
                         fig_vrvp.add_hline(y=current_price, line_dash="dot", line_color="#ffffff", annotation_text="Cena", annotation_position="bottom right", annotation_font_color="white")
                         st.plotly_chart(fig_vrvp, use_container_width=True)
+
+                    # ==========================================
+                    # WIZUALIZACJA: TWORZENIE WYKRESÓW ŚWIECOWYCH
+                    # ==========================================
+                    
+                    display_count = 150 if interval == "1wk" else 60
+                    display_df = recent_df.tail(display_count).copy()
+                    display_htf_df = recent_htf_df.tail(display_count).copy()
+
+                    # -- Wykres 1: GŁÓWNY --
+                    fig_chart = go.Figure(data=[go.Candlestick(
+                        x=display_df.index,
+                        open=display_df['Open'],
+                        high=display_df['High'],
+                        low=display_df['Low'],
+                        close=display_df['Close'],
+                        increasing_line_color='#089981',
+                        decreasing_line_color='#F23645',
+                        name="Cena"
+                    )])
+
+                    fig_chart.add_trace(go.Scatter(x=[None], y=[None], mode='lines', line=dict(color="rgba(8, 153, 129, 0.8)", width=4), name='Aktywna LONG FVG'))
+                    fig_chart.add_trace(go.Scatter(x=[None], y=[None], mode='lines', line=dict(color="rgba(242, 54, 69, 0.8)", width=4), name='Aktywna SHORT FVG'))
+                    fig_chart.add_trace(go.Scatter(x=[None], y=[None], mode='lines', line=dict(color="#ffcc00", width=2, dash='dot'), name='POC (Główny Wolumen)'))
+
+                    y_min = display_df['Low'].min()
+                    y_max = display_df['High'].max()
+                    y_margin = (y_max - y_min) * 0.15
+                    
+                    x_start_dt = display_df.index[0]
+                    x_end_dt = display_df.index[-1]
+                    x_margin = (x_end_dt - x_start_dt) * 0.15
+                    
+                    for fvg in bearish_fvgs[:4]: 
+                        fig_chart.add_shape(type="rect", x0=fvg['start_time'], x1=x_end_dt + x_margin, y0=fvg['bottom'], y1=fvg['top'], 
+                                            fillcolor="rgba(8, 153, 129, 0.15)", line=dict(color="#089981", width=1))
+                        fig_chart.add_annotation(x=x_end_dt, y=fvg['top'], text="LONG FVG", 
+                                                 showarrow=False, font=dict(color="#089981", size=11), yanchor="bottom", xanchor="right")
+
+                    for fvg in bullish_fvgs[:4]: 
+                        fig_chart.add_shape(type="rect", x0=fvg['start_time'], x1=x_end_dt + x_margin, y0=fvg['bottom'], y1=fvg['top'], 
+                                            fillcolor="rgba(242, 54, 69, 0.15)", line=dict(color="#F23645", width=1))
+                        fig_chart.add_annotation(x=x_end_dt, y=fvg['top'], text="SHORT FVG", 
+                                                 showarrow=False, font=dict(color="#F23645", size=11), yanchor="bottom", xanchor="right")
+
+                    fig_chart.add_hline(y=poc_price, line_dash="dot", line_color="#ffcc00", line_width=2, 
+                                        annotation_text="POC", annotation_position="top right", 
+                                        annotation_font_color="#ffcc00")
+
+                    fig_chart.add_annotation(
+                        text=f"<b>{ticker}</b> • {interval}",
+                        xref="paper", yref="paper",
+                        x=0.01, y=0.99,
+                        showarrow=False,
+                        font=dict(size=22, color="rgba(255, 255, 255, 0.4)", family="Arial"),
+                        xanchor="left", yanchor="top"
+                    )
+
+                    fig_chart.update_layout(
+                        paper_bgcolor="#0E1117", 
+                        plot_bgcolor="#0E1117",
+                        margin=dict(l=0, r=0, t=30, b=0),
+                        xaxis_rangeslider_visible=False,
+                        height=550,
+                        font=dict(color="white"),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
+                        xaxis=dict(range=[x_start_dt, x_end_dt + x_margin], showgrid=True, gridwidth=1, gridcolor='#222222'),
+                        yaxis=dict(range=[y_min - y_margin, y_max + y_margin], showgrid=True, gridwidth=1, gridcolor='#222222', side='right', tickformat=".2f")
+                    )
+
+                    # -- Wykres 2: MAKRO (HTF) --
+                    fig_htf_chart = go.Figure(data=[go.Candlestick(
+                        x=display_htf_df.index,
+                        open=display_htf_df['Open'],
+                        high=display_htf_df['High'],
+                        low=display_htf_df['Low'],
+                        close=display_htf_df['Close'],
+                        increasing_line_color='#089981',
+                        decreasing_line_color='#F23645',
+                        name="Cena Makro"
+                    )])
+
+                    fig_htf_chart.add_trace(go.Scatter(x=[None], y=[None], mode='lines', line=dict(color="rgba(8, 153, 129, 0.8)", width=4), name='Aktywna HTF LONG'))
+                    fig_htf_chart.add_trace(go.Scatter(x=[None], y=[None], mode='lines', line=dict(color="rgba(242, 54, 69, 0.8)", width=4), name='Aktywna HTF SHORT'))
+                    fig_htf_chart.add_trace(go.Scatter(x=[None], y=[None], mode='lines', line=dict(color="#ffcc00", width=2, dash='dot'), name='Makro POC'))
+
+                    htf_y_min = display_htf_df['Low'].min()
+                    htf_y_max = display_htf_df['High'].max()
+                    htf_y_margin = (htf_y_max - htf_y_min) * 0.15
+                    
+                    htf_x_start_dt = display_htf_df.index[0]
+                    htf_x_end_dt = display_htf_df.index[-1]
+                    htf_x_margin = (htf_x_end_dt - htf_x_start_dt) * 0.15
+                    
+                    for fvg in htf_bearish_fvgs[:4]:
+                        fig_htf_chart.add_shape(type="rect", x0=fvg['start_time'], x1=htf_x_end_dt + htf_x_margin, y0=fvg['bottom'], y1=fvg['top'], 
+                                            fillcolor="rgba(8, 153, 129, 0.15)", line=dict(color="#089981", width=1))
+                        fig_htf_chart.add_annotation(x=htf_x_end_dt, y=fvg['top'], text="HTF LONG FVG", 
+                                                 showarrow=False, font=dict(color="#089981", size=11), yanchor="bottom", xanchor="right")
+
+                    for fvg in htf_bullish_fvgs[:4]: 
+                        fig_htf_chart.add_shape(type="rect", x0=fvg['start_time'], x1=htf_x_end_dt + htf_x_margin, y0=fvg['bottom'], y1=fvg['top'], 
+                                            fillcolor="rgba(242, 54, 69, 0.15)", line=dict(color="#F23645", width=1))
+                        fig_htf_chart.add_annotation(x=htf_x_end_dt, y=fvg['top'], text="HTF SHORT FVG", 
+                                                 showarrow=False, font=dict(color="#F23645", size=11), yanchor="bottom", xanchor="right")
+
+                    fig_htf_chart.add_hline(y=htf_poc_price, line_dash="dot", line_color="#ffcc00", line_width=2, 
+                                        annotation_text="Makro POC", annotation_position="top right", 
+                                        annotation_font_color="#ffcc00")
+
+                    fig_htf_chart.add_annotation(
+                        text=f"<b>{ticker}</b> • {htf_interval}",
+                        xref="paper", yref="paper",
+                        x=0.01, y=0.99,
+                        showarrow=False,
+                        font=dict(size=22, color="rgba(255, 255, 255, 0.4)", family="Arial"),
+                        xanchor="left", yanchor="top"
+                    )
+
+                    fig_htf_chart.update_layout(
+                        paper_bgcolor="#0E1117", 
+                        plot_bgcolor="#0E1117",
+                        margin=dict(l=0, r=0, t=30, b=0),
+                        xaxis_rangeslider_visible=False,
+                        height=550,
+                        font=dict(color="white"),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
+                        xaxis=dict(range=[htf_x_start_dt, htf_x_end_dt + htf_x_margin], showgrid=True, gridwidth=1, gridcolor='#222222'),
+                        yaxis=dict(range=[htf_y_min - htf_y_margin, htf_y_max + htf_y_margin], showgrid=True, gridwidth=1, gridcolor='#222222', side='right', tickformat=".2f")
+                    )
+
+                    # ==========================================
+                    # WIZUALIZACJA: RENDEROWANIE ZALEŻNIE OD WYBORU INTERWAŁU
+                    # ==========================================
+                    if interval == "1wk":
+                        st.markdown(f"<h4 style='color: #00d2ff; font-size: 17px; margin-top: 30px; margin-bottom: 10px;'>📉 Widok Operacyjny ({interval})</h4>", unsafe_allow_html=True)
+                        st.plotly_chart(fig_chart, use_container_width=True)
+                        
+                        st.markdown(f"<h4 style='color: #ffcc00; font-size: 17px; margin-top: 30px; margin-bottom: 10px;'>🔭 Widok Makro ({htf_interval}) - Wielodniowy</h4>", unsafe_allow_html=True)
+                        st.plotly_chart(fig_htf_chart, use_container_width=True)
+                    else:
+                        col_chart1, col_chart2 = st.columns(2)
+                        with col_chart1:
+                            st.markdown(f"<h4 style='color: #00d2ff; font-size: 17px; margin-top: 30px; margin-bottom: 10px;'>📉 Widok Operacyjny ({interval})</h4>", unsafe_allow_html=True)
+                            st.plotly_chart(fig_chart, use_container_width=True)
+                        with col_chart2:
+                            st.markdown(f"<h4 style='color: #ffcc00; font-size: 17px; margin-top: 30px; margin-bottom: 10px;'>🔭 Widok Makro ({htf_interval}) - Wielodniowy</h4>", unsafe_allow_html=True)
+                            st.plotly_chart(fig_htf_chart, use_container_width=True)
 
                 except Exception as e:
                     st.error(f"Błąd podczas operacji Syndykatu AI: {e}")
